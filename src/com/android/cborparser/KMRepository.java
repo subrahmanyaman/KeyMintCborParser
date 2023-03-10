@@ -124,6 +124,27 @@ public class KMRepository {
     heapIndex[0] = offset;
   }
 
+  private void moveChunk(short startOff, short length, byte[] scratchPad, short offset) {
+    Util.arrayCopyNonAtomic(heap, startOff, scratchPad, offset, length);
+    short moveStart = (short) (startOff + length);
+    short moveLength = (short) (heapIndex[0] - startOff - length);
+    Util.arrayCopyNonAtomic(heap, moveStart, heap, startOff, moveLength);
+    moveStart = (short) (heapIndex[0] - length);
+    Util.arrayCopyNonAtomic(scratchPad, offset, heap, moveStart, length);
+  }
+
+  public void move(short startOff, short length, byte[] scratchPad, short offset) {
+    // move chunks of 256.
+    short noOfLoops = (short) (length / 256);
+    short remaining = (short) (length % 256);
+    for (short i = 0; i < noOfLoops; i++) {
+      moveChunk(startOff, (short) 256, scratchPad, offset);
+    }
+    if (remaining != 0) {
+      moveChunk(startOff, remaining, scratchPad, offset);
+    }
+  }
+
   public short getHeapReclaimIndex() {
     return reclaimIndex[0];
   }

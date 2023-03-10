@@ -454,13 +454,15 @@ public abstract class KMType {
     short contentLength = 0;
     for (short i = 0; i < noOfItems; i++) {
       byte type = KMType.getMajorType(ptr);
-      contentLength += contentLength(type, ptr);
-      ptr += contentLength;
+      short cLen = contentLength(type, ptr);
+      ptr += cLen;
+      contentLength += cLen;
       if (baseMajorType == MAJOR_TYPE_MAP) {
         // Maps contains pair(key and value). So content length to be incremented for a pair.
         type = KMType.getMajorType(ptr);
-        contentLength += contentLength(type, ptr);
-        ptr += contentLength;
+        cLen = contentLength(type, ptr);
+        ptr += cLen;
+        contentLength += cLen;
       }
     }
     return contentLength;
@@ -495,6 +497,9 @@ public abstract class KMType {
     short majorType = getMajorType(basePtr);
     if (majorType != MAJOR_TYPE_ARRAY && majorType != MAJOR_TYPE_MAP) {
       KMException.throwIt(KMError.UNKNOWN_ERROR);
+    }
+    if (noOfItems == 0) {
+      return KMType.INVALID_VALUE;
     }
     if (index >= noOfItems) {
       ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);

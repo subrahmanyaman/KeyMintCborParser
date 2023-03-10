@@ -81,6 +81,24 @@ public class KMMap extends KMType {
     return ptr;
   }
 
+  public void updateLength(short length, byte[] scratchPad, short offset) {
+    short start = instanceTable[KM_MAP_OFFSET];
+    short origLen = length();
+    if (origLen > 23) {
+      if (length > 23) {
+        heap[(short) (start + 1)] = (byte) (length & 0x00FF);
+        return;
+      } else {
+        heap[start] = (byte) (heap[start] & 0x00E0);
+        heap[start] = (byte) (heap[start] | (length & 0x001F));
+        repository.move((short) (start + 1), (short)  1, scratchPad, offset);
+      }
+    } else {
+      heap[start] = (byte) (heap[start] & 0x00E0);
+      heap[start] = (byte) (heap[start] | (length & 0x001F));
+    }
+  }
+
   // public static short instance(short length, byte type) {
   //   short ptr = instance(length);
   //   Util.setShort(heap, (short) (ptr + TLV_HEADER_SIZE), type);

@@ -200,8 +200,11 @@ public class KMDecoder {
     return startOff;
   }
   public short decodeMap(short exp) {
-    short rule = KMMap.cast(exp).getKey((short) 0);
-    rule = KMInteger.cast(rule).getShort();
+    short rulePtr = KMMap.cast(exp).getKey((short) 0);
+    short rule = KMType.INVALID_VALUE;
+    if (rulePtr != KMType.INVALID_VALUE && (KMType.getMajorType(rulePtr) == KMType.MAJOR_TYPE_INT)) {
+      rule = KMInteger.cast(rulePtr).getShort();
+    }
     if (rule == KMType.RULE) {
       return decodeKeyParam(exp);
     } else {
@@ -281,27 +284,6 @@ public class KMDecoder {
     length += KMByteBlob.cast(startOff).length();
     incrementStartOff(length);
     return startOff;
-  }
-
-  // payload length cannot be more then 16 bits.
-  private short readMajorTypeWithPayloadLength(short majorType) {
-    short payloadLength;
-    byte val = readByte();
-    if ((short) (val & MAJOR_TYPE_MASK) != majorType) {
-      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-    }
-    short lenType = (short) (val & ADDITIONAL_MASK);
-    if (lenType > UINT16_LENGTH) {
-      ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-    }
-    if (lenType < UINT8_LENGTH) {
-      payloadLength = lenType;
-    } else if (lenType == UINT8_LENGTH) {
-      payloadLength = (short) (readByte() & 0xFF);
-    } else {
-      payloadLength = readShort();
-    }
-    return payloadLength;
   }
 
   private short readShort() {

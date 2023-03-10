@@ -29,6 +29,23 @@ import javacard.framework.Util;
  */
 public class KMKeyParameters {
 
+  private static KMRepository repository = null;
+  public static byte[] heap;
+  private static KMKeyParameters keyParameters = null;
+
+  public static KMKeyParameters instance(KMRepository repository) {
+    if (keyParameters == null) {
+      keyParameters = new KMKeyParameters(repository);
+    }
+    return keyParameters;
+  }
+  private KMKeyParameters(KMRepository rep) {
+    if (repository == null) {
+      repository = rep;
+      heap = repository.getHeap();
+    }
+  }
+
   private static final short[] customTags = {
     KMType.ULONG_TAG, KMType.AUTH_TIMEOUT_MILLIS,
   };
@@ -167,6 +184,7 @@ public class KMKeyParameters {
     short len = makeKeyParameters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance((short) (len + 5));
     copyKeyParamters(scratchPad, mapPtr, len);
+    //short mapPtr = moveKeyParamters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     // Add Origin
     KMInteger.instance(KMType.ENUM_TAG, KMType.ORIGIN); // Key
     KMInteger.uint_8(origin); // Value
@@ -233,6 +251,60 @@ public class KMKeyParameters {
     // return KMKeyParameters.instance(hwEnf);
   }
 
+  public static short moveKeyParamters(short[] enforcedList, short keyParamsPtr, byte[] scratchPad) {
+    // TODO THis will not work due to the fact that the pointers are changing.
+    byte index = 0;
+    short tagInd;
+    short arrInd = 0;
+    short tagPtr;
+    short tagKey;
+    short tagType;
+    short mapLen = 0;
+    boolean found = false;
+    short maptr = KMMap.instance((short) 255); // Allocate max possible size.
+    print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
+        KMMap.cast(keyParamsPtr).contentLength()));
+    short tagValue;
+    while (index < KMMap.cast(keyParamsPtr).length()) {
+      tagInd = 0;
+      found = false;
+      tagPtr = KMMap.cast(keyParamsPtr).getKey(index);
+      tagValue = KMMap.cast(keyParamsPtr).getKeyValue(index);
+      tagKey = KMInteger.cast(tagPtr).getShort();
+      tagType = KMInteger.cast(tagPtr).getSignificantShort();
+      if (!isValidTag(tagType, tagKey)) {
+        KMException.throwIt(KMError.INVALID_KEY_BLOB);
+      }
+      while (tagInd < (short) enforcedList.length) {
+        if ((enforcedList[tagInd] == tagType)
+            && (enforcedList[(short) (tagInd + 1)] == tagKey)) {
+          short totalLength = (short) (getTotalLength(tagPtr) + getTotalLength(tagValue));
+          repository.move(tagPtr, totalLength,
+              scratchPad, (short) 0);
+          maptr -= totalLength;
+          //repository.move(tagValue, getTotalLength(tagValue), scratchPad, (short) 0);
+          KMMap.cast(keyParamsPtr).updateLength((short) (KMMap.cast(keyParamsPtr).length() - 1),
+              scratchPad, (short) 0);
+          print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
+              KMMap.cast(keyParamsPtr).contentLength()));
+          System.out.println(" copied to buffer:");
+          print(repository.getHeap(), maptr, (short) (repository.getHeapIndex() - maptr));
+          found = true;
+          mapLen++;
+          // Util.setShort(scratchPad, arrInd, tagPtr);
+          // arrInd += 2;
+          // Util.setShort(scratchPad, arrInd, tagValue);
+          // arrInd += 2;
+          break;
+        }
+        tagInd += 2;
+      }
+      if (!found) index++;
+    }
+    KMMap.cast(maptr).updateLength(mapLen, scratchPad, (short) 0);
+    return maptr;
+  }
+
   public static short makeKeyParameters(short[] enforcedList, short keyParamsPtr, byte[] scratchPad) {
     byte index = 0;
     short tagInd;
@@ -264,7 +336,7 @@ public class KMKeyParameters {
       }
       index++;
     }
-    return len;
+    return (short) (arrInd / 4);
   }
 
   // ALL_USERS, EXPORTABLE missing from types.hal
@@ -335,13 +407,14 @@ public class KMKeyParameters {
     return true;
   }
 
-  private static short getContentLength(short ptr) {
+  private static short getTotalLength(short ptr) {
     short majorType = KMType.getMajorType(ptr);
     switch (majorType) {
       case KMType.MAJOR_TYPE_INT:
         return KMInteger.cast(ptr).length();
       case KMType.MAJOR_TYPE_ARRAY:
-        return KMArray.cast(ptr).contentLength();
+        return (short) (KMArray.cast(ptr).contentLength() +
+            KMArray.cast(ptr).headerLength());
       case KMType.MAJOR_TYPE_BYTE_BLOB:
         return (short) (KMByteBlob.cast(ptr).length() +
             KMByteBlob.cast(ptr).headerLength());
@@ -356,20 +429,22 @@ public class KMKeyParameters {
     if (len > 255) {
       ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
     }
-    short destPtr = (short) (mapPtr + KMMap.cast(mapPtr).headerLength());
+    //short destPtr = (short) (mapPtr + KMMap.cast(mapPtr).headerLength());
+    short destPtr;
     short index = 0;
     short ptr = 0;
     short contentLength;
     while (index < len) {
-      contentLength = getContentLength(Util.getShort(ptrArr, ptr));
+      // TODO Avoid copies.
+      contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
+      destPtr = repository.alloc(contentLength);
       Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
       ptr += 2;
-      destPtr += contentLength;
-      contentLength = getContentLength(Util.getShort(ptrArr, ptr));
+      contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
+      destPtr = repository.alloc(contentLength);
       Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
       index++;
       ptr += 2;
-      destPtr += contentLength;
     }
   }
 
@@ -455,5 +530,11 @@ public class KMKeyParameters {
     // }
     // return ret;
   //}
-
+  private static void print(byte[] buf, short start, short length) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = start; i < (start + length); i++) {
+      sb.append(String.format(" 0x%02X", buf[i]));
+    }
+    System.out.println(sb.toString());
+  }
 }

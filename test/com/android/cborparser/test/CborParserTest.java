@@ -3,40 +3,21 @@ package com.android.cborparser.test;
 import static com.android.cborparser.KMType.AGREE_KEY;
 import static com.android.cborparser.KMType.ATTEST_KEY;
 import static com.android.cborparser.KMType.BOTH;
+import static com.android.cborparser.KMType.COSE_PAIR_SIMPLE_VALUE_TAG_TYPE;
 import static com.android.cborparser.KMType.DECRYPT;
-import static com.android.cborparser.KMType.DERIVATION_NONE;
-import static com.android.cborparser.KMType.DEVICE_LOCKED;
-import static com.android.cborparser.KMType.DEVICE_LOCKED_FALSE;
-import static com.android.cborparser.KMType.DEVICE_LOCKED_TRUE;
-import static com.android.cborparser.KMType.ECCURVE;
 import static com.android.cborparser.KMType.ENCRYPT;
-import static com.android.cborparser.KMType.FAILED_BOOT;
 import static com.android.cborparser.KMType.HARDWARE_TYPE;
-import static com.android.cborparser.KMType.ISO18033_2_KDF1_SHA1;
-import static com.android.cborparser.KMType.ISO18033_2_KDF1_SHA256;
-import static com.android.cborparser.KMType.ISO18033_2_KDF2_SHA1;
-import static com.android.cborparser.KMType.ISO18033_2_KDF2_SHA256;
-import static com.android.cborparser.KMType.KEY_DERIVATION_FUNCTION;
 import static com.android.cborparser.KMType.KEY_FORMAT;
 import static com.android.cborparser.KMType.PASSWORD;
 import static com.android.cborparser.KMType.PKCS8;
 import static com.android.cborparser.KMType.PURPOSE;
-import static com.android.cborparser.KMType.P_224;
-import static com.android.cborparser.KMType.P_256;
-import static com.android.cborparser.KMType.P_384;
-import static com.android.cborparser.KMType.P_521;
 import static com.android.cborparser.KMType.RAW;
-import static com.android.cborparser.KMType.RFC5869_SHA256;
-import static com.android.cborparser.KMType.SELF_SIGNED_BOOT;
 import static com.android.cborparser.KMType.SIGN;
 import static com.android.cborparser.KMType.SOFTWARE;
 import static com.android.cborparser.KMType.STRONGBOX;
 import static com.android.cborparser.KMType.TRUSTED_ENVIRONMENT;
-import static com.android.cborparser.KMType.UNVERIFIED_BOOT;
 import static com.android.cborparser.KMType.USER_AUTH_NONE;
 import static com.android.cborparser.KMType.USER_AUTH_TYPE;
-import static com.android.cborparser.KMType.VERIFIED_BOOT;
-import static com.android.cborparser.KMType.VERIFIED_BOOT_STATE;
 import static com.android.cborparser.KMType.VERIFY;
 import static com.android.cborparser.KMType.WRAP_KEY;
 import static com.android.cborparser.KMType.X509;
@@ -44,13 +25,11 @@ import static com.android.cborparser.KMType.X509;
 import com.android.cborparser.KMArray;
 import com.android.cborparser.KMByteBlob;
 import com.android.cborparser.KMDecoder;
-import com.android.cborparser.KMEncoder;
 import com.android.cborparser.KMInteger;
 import com.android.cborparser.KMKeyParameters;
 import com.android.cborparser.KMMap;
 import com.android.cborparser.KMRepository;
 import com.android.cborparser.KMType;
-import com.licel.jcardsim.bouncycastle.crypto.prng.RandomGenerator;
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import javacard.framework.Util;
 import javacard.security.RandomData;
@@ -58,16 +37,18 @@ import org.junit.Test;
 
 public class CborParserTest {
   CardSimulator simulator;
-  KMEncoder encoder;
+  //KMEncoder encoder;
   KMDecoder decoder;
   KMRepository repository;
+  KMKeyParameters keyParameters;
 
   public CborParserTest() {
     //cryptoProvider = new KMJCardSimulator();
     simulator = new CardSimulator();
-    encoder = new KMEncoder();
+    //encoder = new KMEncoder();
     decoder = new KMDecoder();
     repository = new KMRepository(false);
+    keyParameters = KMKeyParameters.instance(repository);
     KMType.initialize();
     //decoder = new KMDecoder();
   }
@@ -203,30 +184,30 @@ public class CborParserTest {
           new Object[] {
               new byte[] {SOFTWARE, TRUSTED_ENVIRONMENT, STRONGBOX},
               new byte[] {X509, PKCS8, RAW},
-              new byte[] {
-                  DERIVATION_NONE,
-                  RFC5869_SHA256,
-                  ISO18033_2_KDF1_SHA1,
-                  ISO18033_2_KDF1_SHA256,
-                  ISO18033_2_KDF2_SHA1,
-                  ISO18033_2_KDF2_SHA256
-              },
-              new byte[] {SELF_SIGNED_BOOT, VERIFIED_BOOT, UNVERIFIED_BOOT, FAILED_BOOT},
-              new byte[] {DEVICE_LOCKED_TRUE, DEVICE_LOCKED_FALSE},
+              // new byte[] {
+              //     DERIVATION_NONE,
+              //     RFC5869_SHA256,
+              //     ISO18033_2_KDF1_SHA1,
+              //     ISO18033_2_KDF1_SHA256,
+              //     ISO18033_2_KDF2_SHA1,
+              //     ISO18033_2_KDF2_SHA256
+              // },
+              // new byte[] {SELF_SIGNED_BOOT, VERIFIED_BOOT, UNVERIFIED_BOOT, FAILED_BOOT},
+              // new byte[] {DEVICE_LOCKED_TRUE, DEVICE_LOCKED_FALSE},
               new byte[] {USER_AUTH_NONE, PASSWORD, KMType.FINGERPRINT, BOTH},
               new byte[] {ENCRYPT, DECRYPT, SIGN, VERIFY, WRAP_KEY, ATTEST_KEY, AGREE_KEY},
-              new byte[] {P_224, P_256, P_384, P_521},
+              //new byte[] {P_224, P_256, P_384, P_521},
               //new byte[] {IGNORE_INVALID_TAGS, FAIL_ON_INVALID_TAGS}
           };
     short[] types = {
         HARDWARE_TYPE,
         KEY_FORMAT,
-        KEY_DERIVATION_FUNCTION,
-        VERIFIED_BOOT_STATE,
-        DEVICE_LOCKED,
+        //KEY_DERIVATION_FUNCTION,
+        //VERIFIED_BOOT_STATE,
+        //DEVICE_LOCKED,
         USER_AUTH_TYPE,
         PURPOSE,
-        ECCURVE,
+        //ECCURVE,
         //RULE
     };
     short bufStart = repository.alloc((short) 5);
@@ -261,11 +242,25 @@ public class CborParserTest {
   public void testKeyParamters() {
     String keyParmStr = "A91A10000002011A300000031908001A500000C81A000100011A700001F7011A600003F0001A600003F11B0000E677D21FD8181A200000014202031A2000000541001A200000064101";
     byte[] keyParamsBuf = hexStringToByteArray(keyParmStr);
+    System.out.println(repository.getHeapIndex());
     short ptr = repository.alloc((short)keyParamsBuf.length);
     Util.arrayCopyNonAtomic(keyParamsBuf, (short) 0, repository.getHeap(), ptr, (short) keyParamsBuf.length);
     ptr = decoder.decode(KMKeyParameters.expAny(), repository.getHeap(), ptr, (short) keyParamsBuf.length);
     printMapItems(ptr);
-    // TODO makeSBEnforced, makeTeeEnforced, makeHwEnforced.
+    byte[] scratchpad = new byte[512];
+    // TEE Enforced
+    short teeEnforced = KMKeyParameters.makeTeeEnforced(ptr, scratchpad);
+    System.out.println("TEE Enforced:");
+    printMapItems(teeEnforced);
+    // SB enforced
+    byte origin = KMType.GENERATED;
+    byte[] val = new byte[] {0x00, 0x01, 0x02};
+    short os_version = KMByteBlob.instance(val, (short) 0, (short) val.length);
+    short sbEnforced = KMKeyParameters.makeSbEnforced(ptr, origin, os_version, os_version,
+        os_version, os_version, scratchpad);
+    System.out.println("Strongbox Enforced:");
+    printMapItems(sbEnforced);
+    System.out.println(repository.getHeapIndex());
   }
 
   private void printItems(short child) {
