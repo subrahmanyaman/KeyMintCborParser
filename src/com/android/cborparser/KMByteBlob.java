@@ -116,16 +116,16 @@ public class KMByteBlob extends KMType {
   // Get the start of blob
   public short getStartOff() {
     //return Util.getShort(heap, (short) (getBaseOffset() + TLV_HEADER_SIZE));
-    return (short) (getBaseOffset() + headerLength());
+    return (short) (instanceTable[KM_BYTE_BLOB_OFFSET] + headerLength());
   }
 
   public void setStartOff(short offset) {
-    Util.setShort(heap, (short) (getBaseOffset() + TLV_HEADER_SIZE), offset);
+    Util.setShort(heap, (short) (instanceTable[KM_BYTE_BLOB_OFFSET] + TLV_HEADER_SIZE), offset);
   }
 
   // Get the length of the blob
   public short length() {
-    return length(getBaseOffset());
+    return length(instanceTable[KM_BYTE_BLOB_OFFSET]);
     //return Util.getShort(heap, (short) (getBaseOffset() + 1));
     // byte addInfo = (byte) (heap[getBaseOffset()] & 0x1F);
     // if (addInfo == 25) {
@@ -141,7 +141,7 @@ public class KMByteBlob extends KMType {
   }
 
   public short headerLength() {
-    return headerLength(getBaseOffset());
+    return headerLength(instanceTable[KM_BYTE_BLOB_OFFSET]);
     //return Util.getShort(heap, (short) (getBaseOffset() + 1));
     // byte addInfo = (byte) (heap[getBaseOffset()] & 0x1F);
     // if (addInfo  == 27) {
@@ -165,33 +165,40 @@ public class KMByteBlob extends KMType {
     return heap;
   }
 
-  public void getValue(byte[] destBuf, short destStart, short destLength) {
-    Util.arrayCopyNonAtomic(heap, getStartOff(), destBuf, destStart, destLength);
-  }
-
-  public short getValues(byte[] destBuf, short destStart) {
-    short destLength = length();
-    Util.arrayCopyNonAtomic(heap, getStartOff(), destBuf, destStart, destLength);
-    return destLength;
-  }
-
-  public void setValue(byte[] srcBuf, short srcStart, short srcLength) {
-    if (length() < srcLength) {
-      ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+  public boolean contains(byte value) {
+    short length = length();
+    short ptr = (short) (instanceTable[KM_BYTE_BLOB_OFFSET] + headerLength());
+    for(short i = 0; i < length; i++) {
+      if (heap[(short) (ptr + i)] == value) {
+        return true;
+      }
     }
-    Util.arrayCopyNonAtomic(srcBuf, srcStart, heap, getStartOff(), srcLength);
-    setLength(srcLength);
+    return false;
   }
+
+  // public void getValue(byte[] destBuf, short destStart, short destLength) {
+  //   Util.arrayCopyNonAtomic(heap, getStartOff(), destBuf, destStart, destLength);
+  // }
+  //
+  // public short getValues(byte[] destBuf, short destStart) {
+  //   short destLength = length();
+  //   Util.arrayCopyNonAtomic(heap, getStartOff(), destBuf, destStart, destLength);
+  //   return destLength;
+  // }
+  //
+  // public void setValue(byte[] srcBuf, short srcStart, short srcLength) {
+  //   if (length() < srcLength) {
+  //     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+  //   }
+  //   Util.arrayCopyNonAtomic(srcBuf, srcStart, heap, getStartOff(), srcLength);
+  //   setLength(srcLength);
+  // }
 
   public boolean isValid() {
     return (length() != 0);
   }
 
-  protected short getBaseOffset() {
-    return instanceTable[KM_BYTE_BLOB_OFFSET];
-  }
-
-  public void setLength(short len) {
-    Util.setShort(heap, (short) (getBaseOffset() + 1), len);
-  }
+  // public void setLength(short len) {
+  //   Util.setShort(heap, (short) (getBaseOffset() + 1), len);
+  // }
 }

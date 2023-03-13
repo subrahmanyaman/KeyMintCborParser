@@ -55,7 +55,8 @@ public class KMRepository {
 
   }
 
-  public void onProcess() {}
+  public void onProcess() {
+  }
 
   public void clean() {
     Util.arrayFillNonAtomic(heap, (short) 0, HEAP_SIZE, (byte) 0);
@@ -63,7 +64,8 @@ public class KMRepository {
     reclaimIndex[0] = HEAP_SIZE;
   }
 
-  public void onDeselect() {}
+  public void onDeselect() {
+  }
 
   public void onSelect() {
     // If write through caching is implemented then this method will restore the data into cache
@@ -133,7 +135,20 @@ public class KMRepository {
     Util.arrayCopyNonAtomic(scratchPad, offset, heap, moveStart, length);
   }
 
-  public void move(short startOff, short length, byte[] scratchPad, short offset) {
+  /*
+  This function moves the 2nd block after the 4th block as shown below.
+  This move changes the pointers of BLOCK-2, BLOCK-3 and BLOCK-4, so it is the responsibility
+  of the caller to update the pointers of BLOCK-2, BLOCK-3 and BLOCK-4.
+                                          HEAP_IDX                                   RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | BLOCK-2 | BLOCK-3 | BLOCK-4 |..........................................| BLOCK-N |
+   --------------------------------------------------------------------------------------------
+                                          HEAP_IDX                                   RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | BLOCK-3 | BLOCK-4 | BLOCK-2 |..........................................| BLOCK-N |
+   --------------------------------------------------------------------------------------------
+  */
+  public short move(short startOff, short length, byte[] scratchPad, short offset) {
     // move chunks of 256.
     short noOfLoops = (short) (length / 256);
     short remaining = (short) (length % 256);
@@ -143,6 +158,79 @@ public class KMRepository {
     if (remaining != 0) {
       moveChunk(startOff, remaining, scratchPad, offset);
     }
+    return (short) (heapIndex[0] - length);
+  }
+
+  private void moveTowardsReclaimIndex(short startOff, short length, byte[] scratchPad, short offset) {
+    Util.arrayCopyNonAtomic(heap, startOff, scratchPad, offset, length);
+    short reclaimIdx = allocReclaimableMemory(length);
+    Util.arrayCopyNonAtomic(scratchPad, offset, heap, reclaimIdx, length);
+    Util.arrayFillNonAtomic(heap, startOff, length, (byte) 0);
+    setHeapIndex((short) startOff);
+  }
+
+  /*
+  This function moves the 2nd block before the nth block as shown below
+  This move changes the pointers of BLOCK-2, so it is the responsibility of the caller to update
+  the pointers of BLOCK-2.
+                      HEAP_IDX                                                       RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | BLOCK-2 |..............................................................| BLOCK-N |
+   --------------------------------------------------------------------------------------------
+            HEAP_IDX                                                       RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | .............................................................| BLOCK-2 | BLOCK-N |
+   --------------------------------------------------------------------------------------------
+  */
+  public short moveTowardsReclaimIndex(short length, byte[] scratchPad, short offset) {
+    // move chunks of 256.
+    short startOff = (short) (heapIndex[0] - length);
+    short noOfLoops = (short) (length / 256);
+    short remaining = (short) (length % 256);
+    for (short i = 0; i < noOfLoops; i++) {
+      moveTowardsReclaimIndex((short) (startOff + length - 256), (short) 256, scratchPad, offset);
+      length -= 256;
+    }
+    if (remaining != 0) {
+      moveTowardsReclaimIndex(startOff, remaining, scratchPad, offset);
+    }
+    return reclaimIndex[0];
+  }
+
+  private void moveTowardsHeapIndex(short startOff, short length, byte[] scratchPad, short offset) {
+    Util.arrayCopyNonAtomic(heap, startOff, scratchPad, offset, length);
+    Util.arrayFillNonAtomic(heap, startOff, length, (byte) 0);
+    reclaimIndex[0] += length;
+    short index = alloc(length);
+    Util.arrayCopyNonAtomic(scratchPad, offset, heap, index, length);
+  }
+
+  /*
+  This function moves the (N-1)th block after 1st block as shown below.
+  This move changes the pointers of BLOCK-(N-1), so it is the responsibility of the caller to update
+  the pointers of BLOCK-(N-1).
+
+            HEAP_IDX                                                   RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | .........................................................| BLOCK-(N-1) | BLOCK-N |
+   --------------------------------------------------------------------------------------------
+                          HEAP_IDX                                                   RECLAIM_IDX
+   ____________________________________________________________________________________________
+  | BLOCK-1 | BLOCK-(N-1) |..........................................................| BLOCK-N |
+   --------------------------------------------------------------------------------------------
+  */
+  public short moveTowardsHeapIndex(short length, byte[] scratchPad, short offset) {
+    // move chunks of 256.
+    short startOff = reclaimIndex[0];
+    short noOfLoops = (short) (length / 256);
+    short remaining = (short) (length % 256);
+    for (short i = 0; i < noOfLoops; i++) {
+      moveTowardsHeapIndex(startOff, (short) 256, scratchPad, offset);
+    }
+    if (remaining != 0) {
+      moveTowardsHeapIndex(startOff, remaining, scratchPad, offset);
+    }
+    return (short) (heapIndex[0] - length);
   }
 
   public short getHeapReclaimIndex() {

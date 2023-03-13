@@ -52,6 +52,37 @@ public class KMMap extends KMType {
   // }
 
   public static short instance(short length) {
+    return instance(length, null, (short) 0);
+    // short arrayHeaderLen = 0;
+    // if (length <= 23) {
+    //   arrayHeaderLen = 1;
+    // } else if (length >= 24 && length <= 255) {
+    //   arrayHeaderLen = 2;
+    // } else if (length > 255 && length <= 65535 ) {
+    //   arrayHeaderLen = 3;
+    // } else {
+    //   KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
+    // }
+    // short ptr = repository.alloc(arrayHeaderLen);
+    // switch (arrayHeaderLen) {
+    //   case 1:
+    //     heap[ptr] = (byte) (MAP_MAJOR_TYPE | (byte) (length & 0x001F));
+    //     break;
+    //   case 2:
+    //     heap[ptr] = (byte) (MAP_MAJOR_TYPE | 0x18);
+    //     heap[(short) (ptr+1)] = (byte) (length & 0xFF);
+    //     break;
+    //   case 3:
+    //     heap[ptr] = (byte) (MAP_MAJOR_TYPE | 0x19);
+    //     Util.setShort(heap, (short) (ptr+1), length);
+    //     break;
+    //   default:
+    //     KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
+    // }
+    // return ptr;
+  }
+
+  public static short instance(short length, byte[] scratchPad, short offset) {
     short arrayHeaderLen = 0;
     if (length <= 23) {
       arrayHeaderLen = 1;
@@ -62,23 +93,28 @@ public class KMMap extends KMType {
     } else {
       KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
     }
-    short ptr = repository.alloc(arrayHeaderLen);
+    byte[] buf = scratchPad;
+    short ret = arrayHeaderLen;
+    if (scratchPad == null) {
+      buf = heap;
+      ret = offset = repository.alloc(arrayHeaderLen);
+    }
     switch (arrayHeaderLen) {
       case 1:
-        heap[ptr] = (byte) (MAP_MAJOR_TYPE | (byte) (length & 0x001F));
+        buf[offset] = (byte) (MAP_MAJOR_TYPE | (byte) (length & 0x001F));
         break;
       case 2:
-        heap[ptr] = (byte) (MAP_MAJOR_TYPE | 0x18);
-        heap[(short) (ptr+1)] = (byte) (length & 0xFF);
+        buf[offset] = (byte) (MAP_MAJOR_TYPE | 0x18);
+        buf[(short) (offset+1)] = (byte) (length & 0xFF);
         break;
       case 3:
-        heap[ptr] = (byte) (MAP_MAJOR_TYPE | 0x19);
-        Util.setShort(heap, (short) (ptr+1), length);
+        buf[offset] = (byte) (MAP_MAJOR_TYPE | 0x19);
+        Util.setShort(heap, (short) (offset+1), length);
         break;
       default:
         KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
     }
-    return ptr;
+    return ret;
   }
 
   public void updateLength(short length, byte[] scratchPad, short offset) {

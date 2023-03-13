@@ -347,4 +347,63 @@ public class KMValidations {
     return true;
   }
 
+  public static boolean isValidKeySize(short algPtr, short valPtr) {
+    if (algPtr == KMType.INVALID_VALUE || valPtr == KMType.INVALID_VALUE) {
+      return false;
+    }
+    short alg = (short) (KMInteger.cast(algPtr).getByte() & 0x00FF);
+    if (KMInteger.cast(valPtr).getSignificantShort() != 0) {
+      return false;
+    }
+    short val = KMInteger.cast(valPtr).getShort();
+    switch (alg) {
+      case KMType.RSA:
+        if (val == 2048) {
+          return true;
+        }
+        break;
+      case KMType.AES:
+        if (val == 128 || val == 256) {
+          return true;
+        }
+        break;
+      case KMType.DES:
+        if (val == 168) {
+          return true;
+        }
+        break;
+      case KMType.EC:
+        if (val == 256) {
+          return true;
+        }
+        break;
+      case KMType.HMAC:
+        if (val % 8 == 0 && val >= 64 && val <= 512) {
+          return true;
+        }
+        break;
+      default:
+        break;
+    }
+    return false;
+  }
+  public static boolean isValidKeyParam(short tagType, short tagKey, short keyParams) {
+    short valuePtr = KMKeyParameters.findTag(tagType, tagKey, keyParams);
+    switch (tagKey) {
+      case KMType.KEYSIZE:
+        short algPtr = KMKeyParameters.findTag(KMType.ENUM_TAG, KMType.ALGORITHM, keyParams);
+        return isValidKeySize(algPtr, valuePtr);
+      case KMType.RSA_PUBLIC_EXPONENT:
+        if (valuePtr == KMType.INVALID_VALUE) {
+          return false;
+        }
+        if (!(KMInteger.cast(valuePtr).getShort() == 0x01
+            && KMInteger.cast(valuePtr).getSignificantShort() == 0x01)) {
+          return false;
+        }
+        return true;
+    }
+    return false;
+  }
+
 }

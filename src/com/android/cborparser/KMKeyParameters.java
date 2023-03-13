@@ -174,16 +174,13 @@ public class KMKeyParameters {
 
   // KDF, ECIES_SINGLE_HASH_MODE missing from types.hal
   public static short makeSbEnforced(
+      KMKeymintDataStore dataStore,
       short keyParamsPtr,
       byte origin,
-      short osVersionObjPtr,
-      short osPatchObjPtr,
-      short vendorPatchObjPtr,
-      short bootPatchObjPtr,
       byte[] scratchPad) {
     short len = makeKeyParameters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance((short) (len + 5));
-    copyKeyParamters(scratchPad, mapPtr, len);
+    copyKeyParamters(scratchPad, len);
     //short mapPtr = moveKeyParamters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     // Add Origin
     KMInteger.instance(KMType.ENUM_TAG, KMType.ORIGIN); // Key
@@ -191,24 +188,23 @@ public class KMKeyParameters {
     // TODO Avoid copy and try move.
     // Add OS_VERSION
     KMInteger.instance(KMType.UINT_TAG, KMType.OS_VERSION); // Key
-    KMInteger.instance(KMByteBlob.cast(osVersionObjPtr).getBuffer(),
-        KMByteBlob.cast(osVersionObjPtr).getStartOff(),
-        KMByteBlob.cast(osVersionObjPtr).length()); // Value
+    len = dataStore.readDataLen(KMKeymintDataStore.BOOT_OS_VERSION);
+    dataStore.readData(KMKeymintDataStore.BOOT_OS_VERSION, scratchPad, (short) 0, len);
+    KMInteger.instance(scratchPad, (short) 0, len); // Value
     // Add OS_PATCH_LEVEL
     KMInteger.instance(KMType.UINT_TAG, KMType.OS_PATCH_LEVEL); // Key
-    KMInteger.instance(KMByteBlob.cast(osPatchObjPtr).getBuffer(),
-        KMByteBlob.cast(osPatchObjPtr).getStartOff(),
-        KMByteBlob.cast(osPatchObjPtr).length()); // Value
+    len = dataStore.readDataLen(KMKeymintDataStore.BOOT_OS_PATCH_LEVEL);
+    dataStore.readData(KMKeymintDataStore.BOOT_OS_PATCH_LEVEL, scratchPad, (short) 0, len);
+    KMInteger.instance(scratchPad, (short) 0, len);  // Value
     // Add VENDOR_PATCH_LEVEL
     KMInteger.instance(KMType.UINT_TAG, KMType.VENDOR_PATCH_LEVEL); // Key
-    KMInteger.instance(KMByteBlob.cast(vendorPatchObjPtr).getBuffer(),
-        KMByteBlob.cast(vendorPatchObjPtr).getStartOff(),
-        KMByteBlob.cast(vendorPatchObjPtr).length()); // Value
+    len = dataStore.readDataLen(KMKeymintDataStore.VENDOR_PATCH_LEVEL);
+    dataStore.readData(KMKeymintDataStore.VENDOR_PATCH_LEVEL, scratchPad, (short) 0, len);
+    KMInteger.instance(scratchPad, (short) 0, len);  // Value
     // Add BOOT_PATCH_LEVEL
     KMInteger.instance(KMType.UINT_TAG, KMType.BOOT_PATCH_LEVEL); // Key
-    KMInteger.instance(KMByteBlob.cast(bootPatchObjPtr).getBuffer(),
-        KMByteBlob.cast(bootPatchObjPtr).getStartOff(),
-        KMByteBlob.cast(bootPatchObjPtr).length()); // Value
+    byte[] bootPathLevel = dataStore.getBootPatchLevel();
+    KMInteger.instance(bootPathLevel, (short) 0, (short) bootPathLevel.length);  // Value
     return mapPtr;
   }
 
@@ -343,18 +339,19 @@ public class KMKeyParameters {
   public static short makeKeystoreEnforced(short keyParamsPtr, byte[] scratchPad) {
     short len = makeKeyParameters(swEnforcedTagsArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance(len);
-    copyKeyParamters(scratchPad, mapPtr, len);
+    copyKeyParamters(scratchPad, len);
     return mapPtr;
   }
 
   public static short makeTeeEnforced(short keyParamsPtr, byte[] scratchPad) {
     short len = makeKeyParameters(teeEnforcedTagsArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance(len);
-    copyKeyParamters(scratchPad, mapPtr, len);
+    copyKeyParamters(scratchPad, len);
     return mapPtr;
   }
 
-  public static short makeHidden(short keyParamsPtr, short rootOfTrustBlob, byte[] scratchPad) {
+  public static short makeHidden(short keyParamsPtr, byte[] scratchPad, short offset,
+      short rootOfTrustBlobLen) {
     short appId = KMKeyParameters.findTag(KMType.BYTES_TAG, KMType.APPLICATION_ID, keyParamsPtr);
     if (appId != KMTag.INVALID_VALUE) {
       if (KMByteBlob.cast(appId).length() == 0) {
@@ -368,16 +365,18 @@ public class KMKeyParameters {
         appData = KMTag.INVALID_VALUE;
       }
     }
-    return makeHidden(appId, appData, rootOfTrustBlob, scratchPad);
+    return makeHidden(appId, appData, scratchPad, offset, rootOfTrustBlobLen);
   }
 
   public static short makeHidden(
-      short appIdBlob, short appDataBlob, short rootOfTrustBlob, byte[] scratchPad) {
+      short appIdBlob, short appDataBlob, byte[] scratchPad, short offset,
+      short rootOfTrustBlobLen) {
     // Order in which the hidden array is created should not change.
+    // ROT, APP_ID and APP_DATA
+    short map = KMMap.instance((short) 3);
+    KMByteBlob.instance(scratchPad, offset, rootOfTrustBlobLen);
+    Util.arrayFillNonAtomic(scratchPad, offset, (short) 256, (byte) 0);
     short index = 0;
-    KMByteBlob.cast(rootOfTrustBlob);
-    Util.setShort(scratchPad, index, rootOfTrustBlob);
-    index += 2;
     if (appIdBlob != KMTag.INVALID_VALUE) {
       KMByteBlob.cast(appIdBlob);
       Util.setShort(scratchPad, index, appIdBlob);
@@ -388,8 +387,7 @@ public class KMKeyParameters {
       Util.setShort(scratchPad, index, appDataBlob);
       index += 2;
     }
-    short map = KMMap.instance((short) (index / 2));
-    copyKeyParamters(scratchPad, map, (short) (index / 2));
+    copyKeyParamters(scratchPad, (short) (index / 2));
     return map;
   }
 
@@ -424,12 +422,11 @@ public class KMKeyParameters {
     return (short) 0;
   }
 
-  public static void copyKeyParamters(byte[] ptrArr, short mapPtr, short len) {
+  public static void copyKeyParamters(byte[] ptrArr, short len) {
     // KeyParameters length won't be greater than 255.
     if (len > 255) {
       ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
     }
-    //short destPtr = (short) (mapPtr + KMMap.cast(mapPtr).headerLength());
     short destPtr;
     short index = 0;
     short ptr = 0;
