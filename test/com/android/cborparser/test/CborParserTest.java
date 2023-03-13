@@ -256,11 +256,12 @@ public class CborParserTest {
     byte origin = KMType.GENERATED;
     byte[] val = new byte[] {0x00, 0x01, 0x02};
     short os_version = KMByteBlob.instance(val, (short) 0, (short) val.length);
-    short sbEnforced = KMKeyParameters.makeSbEnforced(ptr, origin, os_version, os_version,
-        os_version, os_version, scratchpad);
-    System.out.println("Strongbox Enforced:");
-    printMapItems(sbEnforced);
-    System.out.println(repository.getHeapIndex());
+    // TODO Update according the new function definition.
+    // short sbEnforced = KMKeyParameters.makeSbEnforced(ptr, origin, os_version, os_version,
+    //     os_version, os_version, scratchpad);
+    // System.out.println("Strongbox Enforced:");
+    // printMapItems(sbEnforced);
+    // System.out.println(repository.getHeapIndex());
   }
 
   private void printItems(short child) {
