@@ -28,6 +28,8 @@ import javacard.framework.Util;
  * arrayPtr is a pointer to array with any KMTag subtype instances.
  */
 public class KMKeyParameters {
+  public static short[] heapIndex;
+  public static short[] reclaimIndex;
 
   private static KMRepository repository = null;
   public static byte[] heap;
@@ -43,6 +45,8 @@ public class KMKeyParameters {
     if (repository == null) {
       repository = rep;
       heap = repository.getHeap();
+      heapIndex = repository.heapIndex;
+      reclaimIndex = repository.reclaimIndex;
     }
   }
 
@@ -158,9 +162,9 @@ public class KMKeyParameters {
     short len = KMMap.cast(keyParamsPtr).length();
     while (index < len) {
       tagInd = 0;
-      tagKey = KMMap.cast(keyParamsPtr).getKey(index);
-      tagKey = KMInteger.cast(tagKey).getShort();
-      tagType = KMInteger.cast(tagKey).getSignificantShort();
+      tagPtr = KMMap.cast(keyParamsPtr).getKey(index);
+      tagKey = KMInteger.cast(tagPtr).getShort();
+      tagType = KMInteger.cast(tagPtr).getSignificantShort();
       while (tagInd < (short) tagArr.length) {
         if ((tagArr[tagInd] == tagType) && (tagArr[(short) (tagInd + 1)] == tagKey)) {
           return true;
@@ -178,6 +182,9 @@ public class KMKeyParameters {
       short keyParamsPtr,
       byte origin,
       byte[] scratchPad) {
+    heap = repository.getHeap();
+    heapIndex = repository.heapIndex;
+    reclaimIndex = repository.reclaimIndex;
     short len = makeKeyParameters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance((short) (len + 5));
     copyKeyParamters(scratchPad, len);
@@ -446,32 +453,41 @@ public class KMKeyParameters {
   }
 
   public static short makeCustomTags(short keyParams, byte[] scratchPad) {
-    short index = 0;
-    short tagPtr;
-    short tagKey;
-    short offset = 0;
-    short len = (short) customTags.length;
-    short map = KMMap.instance((short) (len / 2));
-    short tagType;
-    while (index < len) {
-      tagType = customTags[(short) (index + 1)];
-      switch (tagType) {
-        case KMType.AUTH_TIMEOUT_MILLIS:
-          short authTimeOutTag =
-              KMKeyParameters.findTag(KMType.UINT_TAG, KMType.AUTH_TIMEOUT, keyParams);
-          if (authTimeOutTag != KMType.INVALID_VALUE) {
-            KMInteger.instance(KMType.ULONG_TAG, KMType.AUTH_TIMEOUT_MILLIS); // Key
-            tagPtr = createAuthTimeOutMillisTag(authTimeOutTag, scratchPad, offset); // Value
-          }
-          break;
-        default:
-          break;
-      }
-      index += 2;
+    short authTimeOutTag =
+        KMKeyParameters.findTag(KMType.UINT_TAG, KMType.AUTH_TIMEOUT, keyParams);
+    if (authTimeOutTag != KMType.INVALID_VALUE) {
+      short mapPtr = KMMap.instance((short) 1);
+      KMInteger.instance(KMType.ULONG_TAG, KMType.AUTH_TIMEOUT_MILLIS); // Key
+      createAuthTimeOutMillisTag(authTimeOutTag, scratchPad, (short) 0); // Value
+      return mapPtr;
     }
+    return KMMap.instance((short) 0);
+    // short index = 0;
+    // short tagPtr;
+    // short tagKey;
+    // short offset = 0;
+    // short len = (short) customTags.length;
+    // short map = KMMap.instance((short) (len / 2));
+    // short tagType;
+    // while (index < len) {
+    //   tagType = customTags[(short) (index + 1)];
+    //   switch (tagType) {
+    //     case KMType.AUTH_TIMEOUT_MILLIS:
+    //       short authTimeOutTag =
+    //           KMKeyParameters.findTag(KMType.UINT_TAG, KMType.AUTH_TIMEOUT, keyParams);
+    //       if (authTimeOutTag != KMType.INVALID_VALUE) {
+    //         KMInteger.instance(KMType.ULONG_TAG, KMType.AUTH_TIMEOUT_MILLIS); // Key
+    //         tagPtr = createAuthTimeOutMillisTag(authTimeOutTag, scratchPad, offset); // Value
+    //       }
+    //       break;
+    //     default:
+    //       break;
+    //   }
+    //   index += 2;
+    // }
     // short map = KMMap.instance((short) (offset / 2));
     // copyKeyParamters(scratchPad, map, (short) (offset / 2));
-    return map;
+    //return map;
   }
 
   public static short createAuthTimeOutMillisTag(

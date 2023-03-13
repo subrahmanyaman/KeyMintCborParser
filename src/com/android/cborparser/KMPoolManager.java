@@ -88,12 +88,12 @@ public class KMPoolManager {
     Cipher.ALG_AES_BLOCK_128_ECB_NOPAD,
     Cipher.ALG_DES_CBC_NOPAD,
     Cipher.ALG_DES_ECB_NOPAD,
-    Cipher.ALG_AES_CTR,
+    //Cipher.ALG_AES_CTR, // TODO SUNJce provider
     Cipher.ALG_RSA_PKCS1,
     KMRsaOAEPEncoding.ALG_RSA_PKCS1_OAEP_SHA256_MGF1_SHA1,
     KMRsaOAEPEncoding.ALG_RSA_PKCS1_OAEP_SHA256_MGF1_SHA256,
     Cipher.ALG_RSA_NOPAD,
-    AEADCipher.ALG_AES_GCM
+    //AEADCipher.ALG_AES_GCM // TODO SUNJce provider
   };
 
   final byte[] SIG_ALGS = {

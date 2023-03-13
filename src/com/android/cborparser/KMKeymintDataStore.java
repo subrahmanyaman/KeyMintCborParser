@@ -784,7 +784,9 @@ public class KMKeymintDataStore {
 
   public short getBootKey(byte[] buffer, short start) {
     if (bootKey == null) {
-      KMException.throwIt(KMError.INVALID_DATA);
+      // TODO remove this once provision is added.
+      bootKey = new byte[32];
+      //KMException.throwIt(KMError.INVALID_DATA);
     }
     Util.arrayCopyNonAtomic(bootKey, (short) 0, buffer, start, (short) bootKey.length);
     return (short) bootKey.length;

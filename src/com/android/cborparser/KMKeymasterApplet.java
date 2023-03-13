@@ -10,7 +10,11 @@ import javacardx.apdu.ExtendedLength;
 
 public class KMKeymasterApplet extends Applet implements ExtendedLength {
 
-  public static final byte INS_GENERATE_KEY = 0x01;
+  public static byte[] heap = null;
+  public static short[] heapIndex = null;
+  public static short[] reclaimIndex = null;
+  private static final byte KEYMINT_CMD_APDU_START = 0x20;
+  public static final byte INS_GENERATE_KEY_CMD = KEYMINT_CMD_APDU_START + 1; // 0x21
   protected static KMRepository repository;
   protected static KMAndroidSEProvider seProvider;
   protected static KMDecoder decoder;
@@ -121,7 +125,8 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
   // The maximum size of the Auth data which is used while encrypting/decrypting the KeyBlob.
   private static final short MAX_AUTH_DATA_SIZE = (short) 512;
   public KMKeymasterApplet() {
-    repository = KMRepository.instance();
+    repository = new KMRepository(false);
+    seProvider = new KMAndroidSEProvider();
     decoder = new KMDecoder();
     kmDataStore = new KMKeymintDataStore(seProvider, repository);
     data = JCSystem.makeTransientShortArray(DATA_ARRAY_SIZE, JCSystem.CLEAR_ON_DESELECT);
@@ -130,6 +135,11 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
 // For keyMint 3.0 and above installation, set ignore second Imei flag to false.
     kmDataStore.ignoreSecondImei = false;
     kmDataStore.createMasterKey(MASTER_KEY_SIZE);
+    KMType.initialize();
+    heap = repository.getHeap();
+    heapIndex = repository.heapIndex;
+    reclaimIndex = repository.reclaimIndex;
+    KMKeyParameters.instance(repository);
   }
 
   public static void install(byte[] bArray, short bOffset, byte bLength) {
@@ -242,7 +252,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       // KeyBlobVersion
       operation.update(repository.getHeap(),
           data[KEY_BLOB_VERSION_DATA_OFFSET],
-              KMInteger.cast(data[CUSTOM_TAGS]).length());
+              KMInteger.cast(data[KEY_BLOB_VERSION_DATA_OFFSET]).length());
       if (numParams == 5) {
         operation.update(repository.getHeap(),
             data[PUB_KEY],
@@ -604,16 +614,36 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
   }
 
   @Override
+  public boolean select() {
+    repository.onSelect();
+    return true;
+  }
+
+  /**
+   * De-selects this applet.
+   */
+  @Override
+  public void deselect() {
+    repository.onDeselect();
+  }
+
+
+  @Override
   public void process(APDU apdu) throws ISOException {
-    byte[] apduBuffer = apdu.getBuffer();
-    if (apdu.isISOInterindustryCLA()) {
-      if (selectingApplet()) {
-        return;
+    try {
+      byte[] apduBuffer = apdu.getBuffer();
+      if (apdu.isISOInterindustryCLA()) {
+        if (selectingApplet()) {
+          return;
+        }
       }
-    }
-    switch (apduBuffer[ISO7816.OFFSET_INS]) {
-      case 0x00:
-        break;
+      switch (apduBuffer[ISO7816.OFFSET_INS]) {
+        case INS_GENERATE_KEY_CMD:
+          processGenerateKey(apdu);
+          break;
+      }
+    } finally {
+      repository.clean();
     }
   }
 
@@ -634,7 +664,11 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       index += recvLen;
       recvLen = apdu.receiveBytes(srcOffset);
     }
-    return decoder.decode(reqExp, buffer, bufferStartOffset, bufferLength);
+    short ret = decoder.decode(reqExp, buffer, bufferStartOffset, bufferLength);
+    // exp memory no more required. move the input buffer at 0 offset on the heap.
+    Util.arrayCopyNonAtomic(buffer, bufferStartOffset, buffer, reqExp, bufferLength);
+    repository.setHeapIndex(bufferLength);
+    return reqExp;
   }
 
   private short generateKeyCmd(APDU apdu) {
@@ -649,6 +683,9 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
 
   private void processGenerateKey(APDU apdu) {
     // Receive the incoming request fully from the host into buffer.
+    byte[] heap = KMKeymasterApplet.heap;
+    short[] heapIndex = KMKeymasterApplet.heapIndex;
+    short[] reclaimIndex = KMKeymasterApplet.reclaimIndex;
     short cmd = generateKeyCmd(apdu);
     // Re-purpose the apdu buffer as scratch pad.
     byte[] scratchPad = apdu.getBuffer();
@@ -780,20 +817,19 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
   private static void generateRSAKey(byte[] scratchPad) {
     // Validate RSA Key
     validateRSAKey(scratchPad);
+    // TODO is lengths[] required ?
     // Now generate 2048 bit RSA keypair for the given exponent
     short[] lengths = tmpVariables;
-    data[PUB_KEY] = KMByteBlob.instance((short) 256); // ByteBlob Header
-    short pubKeyContentOffset = repository.alloc((short) 256); // Content
-    data[SECRET] = KMByteBlob.instance((short) 256); // ByteBlob Header
-    short privKeyContentOffset = repository.alloc((short) 256); // Content
+    data[PUB_KEY] = KMByteBlob.instance((short) 256);
+    data[SECRET] = KMByteBlob.instance((short) 256);
     seProvider.createAsymmetricKey(
         KMType.RSA,
-        repository.getHeap(),
-        privKeyContentOffset,
-        (short) 256,
-        repository.getHeap(),
-        pubKeyContentOffset,
-        (short) 256,
+        KMByteBlob.cast(data[SECRET]).getBuffer(),
+        KMByteBlob.cast(data[SECRET]).getStartOff(),
+        KMByteBlob.cast(data[SECRET]).length(),
+        KMByteBlob.cast(data[PUB_KEY]).getBuffer(),
+        KMByteBlob.cast(data[PUB_KEY]).getStartOff(),
+        KMByteBlob.cast(data[PUB_KEY]).length(),
         lengths);
 
     //data[KEY_BLOB] = createKeyBlobInstance(ASYM_KEY_TYPE);

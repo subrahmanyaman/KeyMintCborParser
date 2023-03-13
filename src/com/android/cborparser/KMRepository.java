@@ -30,13 +30,13 @@ public class KMRepository {
   // The maximum available heap memory.
   public static final short HEAP_SIZE = 10000;
   // Index pointing from the back of heap.
-  private static short[] reclaimIndex;
+  public static short[] reclaimIndex;
   // Singleton instance
   private static KMRepository repository;
   // Heap buffer
   private byte[] heap;
   // Index to the heap buffer.
-  private short[] heapIndex;
+  public short[] heapIndex;
 
   public KMRepository(boolean isUpgrading) {
     heap = JCSystem.makeTransientByteArray(HEAP_SIZE, JCSystem.CLEAR_ON_RESET);
@@ -126,6 +126,15 @@ public class KMRepository {
     heapIndex[0] = offset;
   }
 
+  public void setReclaimIndex(short offset) {
+    // TODO Check if this condition is correct.
+    if (offset > HEAP_SIZE || offset < reclaimIndex[0]) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+    Util.arrayFillNonAtomic(heap, reclaimIndex[0], (short) (offset - reclaimIndex[0]), (byte) 0);
+    reclaimIndex[0] = offset;
+  }
+
   private void moveChunk(short startOff, short length, byte[] scratchPad, short offset) {
     Util.arrayCopyNonAtomic(heap, startOff, scratchPad, offset, length);
     short moveStart = (short) (startOff + length);
@@ -200,7 +209,8 @@ public class KMRepository {
   private void moveTowardsHeapIndex(short startOff, short length, byte[] scratchPad, short offset) {
     Util.arrayCopyNonAtomic(heap, startOff, scratchPad, offset, length);
     Util.arrayFillNonAtomic(heap, startOff, length, (byte) 0);
-    reclaimIndex[0] += length;
+    //reclaimIndex[0] += length;
+    setReclaimIndex((short) (reclaimIndex[0] + length));
     short index = alloc(length);
     Util.arrayCopyNonAtomic(scratchPad, offset, heap, index, length);
   }

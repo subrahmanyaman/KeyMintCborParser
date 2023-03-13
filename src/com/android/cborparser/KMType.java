@@ -433,10 +433,12 @@ public abstract class KMType {
             KMByteBlob.cast(ptr).length());
         break;
       case KMType.MAJOR_TYPE_ARRAY:
-        contentLength += KMArray.cast(ptr).contentLength();
+        contentLength += (short) (KMArray.cast(ptr).headerLength() +
+            KMArray.cast(ptr).contentLength());
         break;
       case KMType.MAJOR_TYPE_MAP:
-        contentLength += KMMap.cast(ptr).contentLength();
+        contentLength += (short) (KMMap.cast(ptr).headerLength() +
+            KMMap.cast(ptr).contentLength());
         break;
       default:
         ISOException.throwIt(ISO7816.SW_DATA_INVALID);

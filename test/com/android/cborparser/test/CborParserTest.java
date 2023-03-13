@@ -26,16 +26,26 @@ import com.android.cborparser.KMArray;
 import com.android.cborparser.KMByteBlob;
 import com.android.cborparser.KMDecoder;
 import com.android.cborparser.KMInteger;
+import com.android.cborparser.KMKey;
 import com.android.cborparser.KMKeyParameters;
+import com.android.cborparser.KMKeymasterApplet;
 import com.android.cborparser.KMMap;
 import com.android.cborparser.KMRepository;
 import com.android.cborparser.KMType;
 import com.licel.jcardsim.smartcardio.CardSimulator;
+import com.licel.jcardsim.utils.AIDUtil;
+import javacard.framework.AID;
 import javacard.framework.Util;
 import javacard.security.RandomData;
+import javax.smartcardio.CommandAPDU;
+import javax.smartcardio.ResponseAPDU;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class CborParserTest {
+
+  public static final byte APDU_P1 = 0x60;
+  public static final byte APDU_P2 = 0x00;
   CardSimulator simulator;
   //KMEncoder encoder;
   KMDecoder decoder;
@@ -45,11 +55,11 @@ public class CborParserTest {
   public CborParserTest() {
     //cryptoProvider = new KMJCardSimulator();
     simulator = new CardSimulator();
+    init();
     //encoder = new KMEncoder();
     decoder = new KMDecoder();
     repository = new KMRepository(false);
     keyParameters = KMKeyParameters.instance(repository);
-    KMType.initialize();
     //decoder = new KMDecoder();
   }
 
@@ -264,6 +274,25 @@ public class CborParserTest {
     // System.out.println(repository.getHeapIndex());
   }
 
+  private void init() {
+    // Create simulator
+    AID appletAID = AIDUtil.create("A000000062");
+    simulator.installApplet(appletAID, KMKeymasterApplet.class);
+    // Select applet
+    simulator.selectApplet(appletAID);
+
+  }
+
+  @Test
+  public void testGenerateRsaKey() {
+    //8021600000004D
+    String generateKeyCmdStr = "84A91A10000002011A300000031908001A500000C81A000100011A700001F7011A600003F0001A600003F11B0000E677D21FD8181A200000014202031A2000000541001A20000006410140A0400000";
+    byte[] generateKeyCmd = hexStringToByteArray(generateKeyCmdStr);
+    CommandAPDU apdu = encodeApdu(KMKeymasterApplet.INS_GENERATE_KEY_CMD, generateKeyCmd);
+    ResponseAPDU response = simulator.transmitCommand(apdu);
+    Assert.assertEquals(0x9000, response.getSW());
+  }
+
   private void printItems(short child) {
     switch (KMType.getMajorType(child)) {
       case KMType.MAJOR_TYPE_INT:
@@ -306,4 +335,21 @@ public class CborParserTest {
     System.out.println(sb.toString());
   }
 
+  public static CommandAPDU encodeApdu(byte ins, byte[] encodedCmd) {
+    byte[] buf = new byte[2500];
+    buf[0] = (byte) 0x80;
+    buf[1] = ins;
+    buf[2] = APDU_P1;
+    buf[3] = APDU_P2;
+    buf[4] = 0;
+    Util.arrayCopyNonAtomic(encodedCmd, (short) 0, buf, (short) 7, (short) encodedCmd.length);
+    Util.setShort(buf, (short) 5, (short) encodedCmd.length);
+    byte[] apdu = new byte[7 + (short) encodedCmd.length];
+    Util.arrayCopyNonAtomic(buf, (short) 0, apdu, (short) 0,
+        (short) (7 + (short) encodedCmd.length));
+    return new CommandAPDU(apdu);
+  }
+
 }
+
+
