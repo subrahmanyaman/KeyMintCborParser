@@ -50,7 +50,7 @@ public class CborParserTest {
   //KMEncoder encoder;
   KMDecoder decoder;
   KMRepository repository;
-  KMKeyParameters keyParameters;
+  //KMKeyParameters keyParameters;
 
   public CborParserTest() {
     //cryptoProvider = new KMJCardSimulator();
@@ -58,8 +58,8 @@ public class CborParserTest {
     init();
     //encoder = new KMEncoder();
     decoder = new KMDecoder();
-    repository = new KMRepository(false);
-    keyParameters = KMKeyParameters.instance(repository);
+    repository = KMRepository.instance();
+    //keyParameters = KMKeyParameters.instance(repository);
     //decoder = new KMDecoder();
   }
 
@@ -255,6 +255,7 @@ public class CborParserTest {
     System.out.println(repository.getHeapIndex());
     short ptr = repository.alloc((short)keyParamsBuf.length);
     Util.arrayCopyNonAtomic(keyParamsBuf, (short) 0, repository.getHeap(), ptr, (short) keyParamsBuf.length);
+    System.out.println(KMMap.cast(ptr).length());
     ptr = decoder.decode(KMKeyParameters.expAny(), repository.getHeap(), ptr, (short) keyParamsBuf.length);
     printMapItems(ptr);
     byte[] scratchpad = new byte[512];

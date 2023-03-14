@@ -16,8 +16,6 @@
 
 package com.android.cborparser;
 
-import static com.android.cborparser.KMType.heap;
-
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.Util;
@@ -31,24 +29,24 @@ public class KMKeyParameters {
   public static short[] heapIndex;
   public static short[] reclaimIndex;
 
-  private static KMRepository repository = null;
-  public static byte[] heap;
-  private static KMKeyParameters keyParameters = null;
-
-  public static KMKeyParameters instance(KMRepository repository) {
-    if (keyParameters == null) {
-      keyParameters = new KMKeyParameters(repository);
-    }
-    return keyParameters;
-  }
-  private KMKeyParameters(KMRepository rep) {
-    if (repository == null) {
-      repository = rep;
-      heap = repository.getHeap();
-      heapIndex = repository.heapIndex;
-      reclaimIndex = repository.reclaimIndex;
-    }
-  }
+  //private static KMRepository repository = null;
+  //public static byte[] heap;
+  //private static KMKeyParameters keyParameters = null;
+  //
+  // public static KMKeyParameters instance(KMRepository repository) {
+  //   if (keyParameters == null) {
+  //     keyParameters = new KMKeyParameters(repository);
+  //   }
+  //   return keyParameters;
+  // }
+  // private KMKeyParameters(KMRepository rep) {
+  //   if (repository == null) {
+  //     repository = rep;
+  //     heap = repository.getHeap();
+  //     heapIndex = repository.heapIndex;
+  //     reclaimIndex = repository.reclaimIndex;
+  //   }
+  // }
 
   private static final short[] customTags = {
     KMType.ULONG_TAG, KMType.AUTH_TIMEOUT_MILLIS,
@@ -182,9 +180,9 @@ public class KMKeyParameters {
       short keyParamsPtr,
       byte origin,
       byte[] scratchPad) {
-    heap = repository.getHeap();
-    heapIndex = repository.heapIndex;
-    reclaimIndex = repository.reclaimIndex;
+    // heap = repository.getHeap();
+    // heapIndex = repository.heapIndex;
+    // reclaimIndex = repository.reclaimIndex;
     short len = makeKeyParameters(hwEnforcedTagArr, keyParamsPtr, scratchPad);
     short mapPtr = KMMap.instance((short) (len + 5));
     copyKeyParamters(scratchPad, len);
@@ -265,8 +263,8 @@ public class KMKeyParameters {
     short mapLen = 0;
     boolean found = false;
     short maptr = KMMap.instance((short) 255); // Allocate max possible size.
-    print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
-        KMMap.cast(keyParamsPtr).contentLength()));
+    //print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
+    //    KMMap.cast(keyParamsPtr).contentLength()));
     short tagValue;
     while (index < KMMap.cast(keyParamsPtr).length()) {
       tagInd = 0;
@@ -282,16 +280,16 @@ public class KMKeyParameters {
         if ((enforcedList[tagInd] == tagType)
             && (enforcedList[(short) (tagInd + 1)] == tagKey)) {
           short totalLength = (short) (getTotalLength(tagPtr) + getTotalLength(tagValue));
-          repository.move(tagPtr, totalLength,
-              scratchPad, (short) 0);
+          //repository.move(tagPtr, totalLength,
+          //    scratchPad, (short) 0);
           maptr -= totalLength;
           //repository.move(tagValue, getTotalLength(tagValue), scratchPad, (short) 0);
           KMMap.cast(keyParamsPtr).updateLength((short) (KMMap.cast(keyParamsPtr).length() - 1),
               scratchPad, (short) 0);
-          print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
-              KMMap.cast(keyParamsPtr).contentLength()));
+          //print(repository.getHeap(), keyParamsPtr, (short) (KMMap.cast(keyParamsPtr).headerLength() +
+          //    KMMap.cast(keyParamsPtr).contentLength()));
           System.out.println(" copied to buffer:");
-          print(repository.getHeap(), maptr, (short) (repository.getHeapIndex() - maptr));
+          //print(repository.getHeap(), maptr, (short) (repository.getHeapIndex() - maptr));
           found = true;
           mapLen++;
           // Util.setShort(scratchPad, arrInd, tagPtr);
@@ -437,6 +435,7 @@ public class KMKeyParameters {
     if (len > 255) {
       ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
     }
+    byte[] heap = KMRepository.instance().getHeap();
     short destPtr;
     short index = 0;
     short ptr = 0;
@@ -444,11 +443,11 @@ public class KMKeyParameters {
     while (index < len) {
       // TODO Avoid copies.
       contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
-      destPtr = repository.alloc(contentLength);
+      destPtr = KMRepository.instance().alloc(contentLength);
       Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
       ptr += 2;
       contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
-      destPtr = repository.alloc(contentLength);
+      destPtr = KMRepository.instance().alloc(contentLength);
       Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
       index++;
       ptr += 2;

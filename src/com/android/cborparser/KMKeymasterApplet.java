@@ -139,7 +139,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     heap = repository.getHeap();
     heapIndex = repository.heapIndex;
     reclaimIndex = repository.reclaimIndex;
-    KMKeyParameters.instance(repository);
+    //KMKeyParameters.instance(repository);
   }
 
   public static void install(byte[] bArray, short bOffset, byte bLength) {
@@ -567,7 +567,6 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       PRIV_KEY
       NONCE
       AUTH_TAG
-      CUSTOM_TAGS
       KEY_CHARS
       CUSTOM_TAGS        --> HEAP_IDX
       ..
@@ -816,7 +815,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     // Move keycharacteristics at the end.
     short keyCharsLen = (short) (KMArray.cast(data[KEY_CHARACTERISTICS]).headerLength() +
         KMArray.cast(data[KEY_CHARACTERISTICS]).contentLength());
-    short keyCharsOffset = data[KEY_CHARACTERISTICS];
+    //short keyCharsOffset = data[KEY_CHARACTERISTICS];
     data[KEY_CHARACTERISTICS] = repository.moveTowardsReclaimIndex(keyCharsLen, scratchPad, (short) 0);
     data[SB_PARAMETERS] = KMArray.cast(data[KEY_CHARACTERISTICS]).get((short) 0);
     data[TEE_PARAMETERS] = KMArray.cast(data[KEY_CHARACTERISTICS]).get((short) 1);

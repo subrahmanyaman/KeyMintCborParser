@@ -96,7 +96,7 @@ public class KMDecoder {
     if (key != 0) {
       // unmask expression
       // TODO Currently none of the below switch types are 0. In future to handle '0' it is
-      // a good idea to mast the as shown below in commented
+      // a good idea to mask the as shown below in commented
       //key = (short) (key ^ KMInteger.INT_MASK);
       switch (key) {
         case KMType.ENUM_TAG:
