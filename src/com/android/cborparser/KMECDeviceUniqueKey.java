@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2020 The Android Open Source Project
+ * Copyright(C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,20 @@
  */
 package com.android.cborparser;
 
-import javacard.security.HMACKey;
+import javacard.security.ECPublicKey;
+import javacard.security.KeyPair;
 
-/** This is a wrapper class for HMACKey. */
-public class KMHmacKey implements KMKey {
+public class KMECDeviceUniqueKey implements KMKey {
 
-  public HMACKey hmacKey;
-
-  public KMHmacKey(HMACKey key) {
-    hmacKey = key;
-  }
+  public KeyPair ecKeyPair;
 
   @Override
   public short getPublicKey(byte[] buf, short offset) {
-    return 0;
+    ECPublicKey publicKey = (ECPublicKey) ecKeyPair.getPublic();
+    return publicKey.getW(buf, offset);
+  }
+
+  public KMECDeviceUniqueKey(KeyPair ecPair) {
+    ecKeyPair = ecPair;
   }
 }

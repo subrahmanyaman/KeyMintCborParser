@@ -291,6 +291,8 @@ public class CborParserTest {
     CommandAPDU apdu = encodeApdu(KMKeymasterApplet.INS_GENERATE_KEY_CMD, generateKeyCmd);
     ResponseAPDU response = simulator.transmitCommand(apdu);
     Assert.assertEquals(0x9000, response.getSW());
+    byte[] output = response.getBytes();
+    print(output, (short) 0, (short) output.length);
   }
 
   private void printItems(short child) {

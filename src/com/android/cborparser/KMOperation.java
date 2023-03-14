@@ -70,6 +70,4 @@ public interface KMOperation {
   // will be
   // size of the decrypted data only.
   short getAESGCMOutputSize(short dataSize, short macLength);
-
-  KMKeyObject getKeyObject();
 }

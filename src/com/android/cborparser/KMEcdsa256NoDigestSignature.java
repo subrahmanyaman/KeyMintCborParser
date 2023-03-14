@@ -15,38 +15,90 @@
  */
 package com.android.cborparser;
 
+import java.math.BigInteger;
+import java.security.AlgorithmParameters;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.SignatureException;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.ECParameterSpec;
+import java.security.spec.ECPoint;
+import java.security.spec.ECPrivateKeySpec;
+import java.security.spec.ECPublicKeySpec;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.InvalidParameterSpecException;
 import javacard.framework.Util;
 import javacard.security.CryptoException;
 import javacard.security.Key;
-import javacard.security.MessageDigest;
 import javacard.security.Signature;
-import javacardx.crypto.Cipher;
 
-/**
- * This class provides support for ECDSA_NO_DIGEST signature algorithm. Added this because javacard
- * 3.0.5 does not support this
- */
 public class KMEcdsa256NoDigestSignature extends Signature {
 
-  public static final byte ALG_ECDSA_NODIGEST = (byte) 0x67;
-  public static final byte MAX_NO_DIGEST_MSG_LEN = 32;
-  private byte algorithm;
-  private Signature inst;
+  private java.security.Signature sunSigner;
 
-  public KMEcdsa256NoDigestSignature(byte alg) {
-    algorithm = alg;
-    inst = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
+  public KMEcdsa256NoDigestSignature(byte mode, byte[] key, short keyStart, short keyLength) {
+    KeyFactory kf;
+    try {
+      sunSigner = java.security.Signature.getInstance("NONEwithECDSA", "SunEC");
+      kf = KeyFactory.getInstance("EC");
+      AlgorithmParameters parameters = AlgorithmParameters.getInstance("EC", "SunEC");
+      // Supported curve secp256r1
+      parameters.init(new ECGenParameterSpec("secp256r1"));
+      ECParameterSpec ecParameters = parameters.getParameterSpec(ECParameterSpec.class);
+      if (mode == Signature.MODE_SIGN) {
+        byte[] privKey = new byte[keyLength];
+        for (short i = 0; i < keyLength; i++) {
+          privKey[i] = key[keyStart + i];
+        }
+        BigInteger bI = new BigInteger(1, privKey);
+        ECPrivateKeySpec prikeyspec = new ECPrivateKeySpec(bI, ecParameters);
+        ECPrivateKey privkey = (ECPrivateKey) kf.generatePrivate(prikeyspec);
+        sunSigner.initSign(privkey);
+      } else {
+        // Check if  the first byte is 04 and remove it.
+        if (key[keyStart] == 0x04) {
+          // uncompressed format.
+          keyStart++;
+          keyLength--;
+        }
+        short i = 0;
+        byte[] pubx = new byte[keyLength / 2];
+        for (; i < keyLength / 2; i++) {
+          pubx[i] = key[keyStart + i];
+        }
+        byte[] puby = new byte[keyLength / 2];
+        for (i = 0; i < keyLength / 2; i++) {
+          puby[i] = key[keyStart + keyLength / 2 + i];
+        }
+        BigInteger bIX = new BigInteger(pubx);
+        BigInteger bIY = new BigInteger(puby);
+        ECPoint point = new ECPoint(bIX, bIY);
+        ECPublicKeySpec pubkeyspec = new ECPublicKeySpec(point, ecParameters);
+        ECPublicKey pubkey = (ECPublicKey) kf.generatePublic(pubkeyspec);
+        sunSigner.initVerify(pubkey);
+      }
+    } catch (NoSuchAlgorithmException e) {
+      CryptoException.throwIt(CryptoException.NO_SUCH_ALGORITHM);
+    } catch (NoSuchProviderException e) {
+      CryptoException.throwIt(CryptoException.NO_SUCH_ALGORITHM);
+    } catch (InvalidParameterSpecException e) {
+      CryptoException.throwIt(CryptoException.INVALID_INIT);
+    } catch (InvalidKeySpecException e) {
+      CryptoException.throwIt(CryptoException.INVALID_INIT);
+    } catch (InvalidKeyException e) {
+      CryptoException.throwIt(CryptoException.INVALID_INIT);
+    }
   }
 
   @Override
-  public void init(Key key, byte b) throws CryptoException {
-    inst.init(key, b);
-  }
+  public void init(Key key, byte b) throws CryptoException {}
 
   @Override
-  public void init(Key key, byte b, byte[] bytes, short i, short i1) throws CryptoException {
-    inst.init(key, b, bytes, i, i1);
-  }
+  public void init(Key key, byte b, byte[] bytes, short i, short i1) throws CryptoException {}
 
   @Override
   public void setInitialDigest(byte[] bytes, short i, short i1, byte[] bytes1, short i2, short i3)
@@ -54,12 +106,12 @@ public class KMEcdsa256NoDigestSignature extends Signature {
 
   @Override
   public byte getAlgorithm() {
-    return algorithm;
+    return 0;
   }
 
   @Override
   public byte getMessageDigestAlgorithm() {
-    return MessageDigest.ALG_NULL;
+    return 0;
   }
 
   @Override
@@ -69,68 +121,60 @@ public class KMEcdsa256NoDigestSignature extends Signature {
 
   @Override
   public byte getPaddingAlgorithm() {
-    return Cipher.PAD_NULL;
+    return 0;
   }
 
   @Override
   public short getLength() throws CryptoException {
-    return inst.getLength();
+    return 0;
   }
 
   @Override
   public void update(byte[] message, short msgStart, short messageLength) throws CryptoException {
-    // HAL accumulates the data and send it at finish operation.
+    byte[] msgBytes = new byte[messageLength];
+    for (int i = 0; i < messageLength; i++) {
+      msgBytes[i] = message[msgStart + i];
+    }
+    try {
+      if (messageLength > 0) {
+        sunSigner.update(msgBytes);
+      }
+    } catch (SignatureException e) {
+      CryptoException.throwIt(CryptoException.ILLEGAL_VALUE);
+    }
   }
 
   @Override
   public short sign(byte[] bytes, short i, short i1, byte[] bytes1, short i2)
       throws CryptoException {
+    short len = 0;
     try {
-      if (i1 > MAX_NO_DIGEST_MSG_LEN) {
-        CryptoException.throwIt(CryptoException.ILLEGAL_USE);
-      }
-      // add zeros to the left
-      if (i1 < MAX_NO_DIGEST_MSG_LEN) {
-        Util.arrayFillNonAtomic(
-            KMAndroidSEProvider.getInstance().tmpArray,
-            (short) 0,
-            (short) MAX_NO_DIGEST_MSG_LEN,
-            (byte) 0);
-      }
-      Util.arrayCopyNonAtomic(
-          bytes,
-          i,
-          KMAndroidSEProvider.getInstance().tmpArray,
-          (short) (MAX_NO_DIGEST_MSG_LEN - i1),
-          i1);
-      return inst.signPreComputedHash(
-          KMAndroidSEProvider.getInstance().tmpArray,
-          (short) 0,
-          (short) MAX_NO_DIGEST_MSG_LEN,
-          bytes1,
-          i2);
-    } finally {
-      KMAndroidSEProvider.getInstance().clean();
+      update(bytes, i, i1);
+      byte[] sig = sunSigner.sign();
+      Util.arrayCopyNonAtomic(sig, (short) 0, bytes1, i2, (short) sig.length);
+      return (short) sig.length;
+    } catch (SignatureException e) {
+      CryptoException.throwIt(CryptoException.ILLEGAL_VALUE);
     }
+    return len;
   }
 
   @Override
   public short signPreComputedHash(byte[] bytes, short i, short i1, byte[] bytes1, short i2)
       throws CryptoException {
-    return inst.sign(bytes, i, i1, bytes1, i2);
+    return 0;
   }
 
   @Override
   public boolean verify(byte[] bytes, short i, short i1, byte[] bytes1, short i2, short i3)
       throws CryptoException {
-    // Verification is handled inside HAL
+    // Public key operations not handled here.
     return false;
   }
 
   @Override
   public boolean verifyPreComputedHash(
       byte[] bytes, short i, short i1, byte[] bytes1, short i2, short i3) throws CryptoException {
-    // Verification is handled inside HAL
     return false;
   }
 }

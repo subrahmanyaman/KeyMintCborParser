@@ -16,7 +16,6 @@
 package com.android.cborparser;
 
 import javacard.security.AESKey;
-import org.globalplatform.upgrade.Element;
 
 /** This is a wrapper class for AESKey. */
 public class KMAESKey implements KMKey {
@@ -27,27 +26,8 @@ public class KMAESKey implements KMKey {
     aesKey = key;
   }
 
-  public static void onSave(Element element, KMAESKey kmKey) {
-    element.write(kmKey.aesKey);
-  }
-
-  public static KMAESKey onRestore(AESKey aesKey) {
-    if (aesKey == null) {
-      return null;
-    }
-    return new KMAESKey(aesKey);
-  }
-
-  public static short getBackupPrimitiveByteCount() {
-    return (short) 0;
-  }
-
-  public static short getBackupObjectCount() {
-    return (short) 1;
-  }
-
   @Override
   public short getPublicKey(byte[] buf, short offset) {
-    return (short) 0;
+    return 0;
   }
 }

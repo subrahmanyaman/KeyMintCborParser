@@ -96,7 +96,7 @@ public class KMKeymintDataStore {
   public boolean ignoreSecondImei;
   private short dataIndex;
   private byte[] dataTable;
-  private KMAndroidSEProvider seProvider;
+  private KMJCardSimulator seProvider;
   private KMRepository repository;
   private byte[] udsCertChain;
   private byte[] diceCertChain;
@@ -113,7 +113,7 @@ public class KMKeymintDataStore {
     return kmDataStore;
   }
 
-  public KMKeymintDataStore(KMAndroidSEProvider provider, KMRepository repo) {
+  public KMKeymintDataStore(KMJCardSimulator provider, KMRepository repo) {
     seProvider = provider;
     repository = repo;
     boolean isUpgrading = provider.isUpgrading();

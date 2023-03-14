@@ -37,6 +37,7 @@ public class KMRepository {
   private byte[] heap;
   // Index to the heap buffer.
   public short[] heapIndex;
+  public static short maxHeapSize = 0;
 
   public KMRepository(boolean isUpgrading) {
     heap = JCSystem.makeTransientByteArray(HEAP_SIZE, JCSystem.CLEAR_ON_RESET);
@@ -78,6 +79,7 @@ public class KMRepository {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
     reclaimIndex[0] -= length;
+    updateHeapProfileData();
     return reclaimIndex[0];
   }
 
@@ -105,6 +107,7 @@ public class KMRepository {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
     heapIndex[0] += length;
+    updateHeapProfileData();
     return (short) (heapIndex[0] - length);
   }
 
@@ -193,15 +196,13 @@ public class KMRepository {
   */
   public short moveTowardsReclaimIndex(short length, byte[] scratchPad, short offset) {
     // move chunks of 256.
-    short startOff = (short) (heapIndex[0] - length);
     short noOfLoops = (short) (length / 256);
     short remaining = (short) (length % 256);
     for (short i = 0; i < noOfLoops; i++) {
-      moveTowardsReclaimIndex((short) (startOff + length - 256), (short) 256, scratchPad, offset);
-      length -= 256;
+      moveTowardsReclaimIndex((short) (heapIndex[0] - 256), (short) 256, scratchPad, offset);
     }
     if (remaining != 0) {
-      moveTowardsReclaimIndex(startOff, remaining, scratchPad, offset);
+      moveTowardsReclaimIndex((short) (heapIndex[0] - remaining), remaining, scratchPad, offset);
     }
     return reclaimIndex[0];
   }
@@ -245,5 +246,12 @@ public class KMRepository {
 
   public short getHeapReclaimIndex() {
     return reclaimIndex[0];
+  }
+
+  public void updateHeapProfileData() {
+    short totalHeapConsumed = (short) (heapIndex[0] + (HEAP_SIZE - reclaimIndex[0]));
+    if (totalHeapConsumed > maxHeapSize) {
+      maxHeapSize = totalHeapConsumed;
+    }
   }
 }

@@ -412,7 +412,7 @@ public class KMKeyParameters {
     return true;
   }
 
-  private static short getTotalLength(short ptr) {
+  public static short getTotalLength(short ptr) {
     short majorType = KMType.getMajorType(ptr);
     switch (majorType) {
       case KMType.MAJOR_TYPE_INT:
@@ -423,6 +423,9 @@ public class KMKeyParameters {
       case KMType.MAJOR_TYPE_BYTE_BLOB:
         return (short) (KMByteBlob.cast(ptr).length() +
             KMByteBlob.cast(ptr).headerLength());
+      case KMType.MAJOR_TYPE_MAP:
+        return (short) (KMMap.cast(ptr).contentLength() +
+            KMMap.cast(ptr).headerLength());
       default:
         ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }

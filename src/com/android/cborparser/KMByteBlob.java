@@ -47,8 +47,30 @@ public class KMByteBlob extends KMType {
     return KMType.exp(BYTE_BLOB_MAJOR_TYPE);
   }
 
-  // return an empty byte blob instance
-  public static short instance(short length) {
+  private static void instance(byte[] buf, short offset, short length, short byteBlobHeaderLen) {
+    switch (byteBlobHeaderLen) {
+      case 1:
+        buf[offset] = (byte) (BYTE_BLOB_MAJOR_TYPE | (byte) (length & 0x001F));
+        break;
+      case 2:
+        buf[offset] = (byte) (BYTE_BLOB_MAJOR_TYPE | 0x18);
+        buf[(short) (offset+1)] = (byte) (length & 0xFF);
+        break;
+      case 3:
+        buf[offset] = (byte) (BYTE_BLOB_MAJOR_TYPE | 0x19);
+        Util.setShort(buf, (short) (offset+1), length);
+        break;
+      default:
+        KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
+    }
+  }
+  public static short addHeader(short length, byte[] scratchPad, short offset) {
+    short byteBlobHeaderLen = byteBlobHeaderLength(length);
+    instance(scratchPad, offset, length, byteBlobHeaderLen);
+    return byteBlobHeaderLen;
+  }
+
+  public static short byteBlobHeaderLength(short length) {
     short byteBlobHeaderLen = 1;
     if (length >= 24 && length <= 255) {
       byteBlobHeaderLen = 2;
@@ -57,22 +79,14 @@ public class KMByteBlob extends KMType {
     } else {
       KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
     }
+    return byteBlobHeaderLen;
+  }
+
+  // return an empty byte blob instance
+  public static short instance(short length) {
+    short byteBlobHeaderLen = byteBlobHeaderLength(length);
     short ptr = repository.alloc((short) (byteBlobHeaderLen + length));
-    switch (byteBlobHeaderLen) {
-      case 1:
-        heap[ptr] = (byte) (BYTE_BLOB_MAJOR_TYPE | (byte) (length & 0x001F));
-        break;
-      case 2:
-        heap[ptr] = (byte) (BYTE_BLOB_MAJOR_TYPE | 0x18);
-        heap[(short) (ptr+1)] = (byte) (length & 0xFF);
-        break;
-      case 3:
-        heap[ptr] = (byte) (BYTE_BLOB_MAJOR_TYPE | 0x19);
-        Util.setShort(heap, (short) (ptr+1), length);
-        break;
-      default:
-        KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
-    }
+    instance(repository.getHeap(), ptr, length, byteBlobHeaderLen);
     return ptr;
   }
 

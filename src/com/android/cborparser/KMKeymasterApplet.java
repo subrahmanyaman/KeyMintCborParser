@@ -16,7 +16,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
   private static final byte KEYMINT_CMD_APDU_START = 0x20;
   public static final byte INS_GENERATE_KEY_CMD = KEYMINT_CMD_APDU_START + 1; // 0x21
   protected static KMRepository repository;
-  protected static KMAndroidSEProvider seProvider;
+  protected static KMJCardSimulator seProvider;
   protected static KMDecoder decoder;
   // Short array used to store the temporary results.
   protected static short[] tmpVariables;
@@ -126,7 +126,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
   private static final short MAX_AUTH_DATA_SIZE = (short) 512;
   public KMKeymasterApplet() {
     repository = new KMRepository(false);
-    seProvider = new KMAndroidSEProvider();
+    seProvider = new KMJCardSimulator();
     decoder = new KMDecoder();
     kmDataStore = new KMKeymintDataStore(seProvider, repository);
     data = JCSystem.makeTransientShortArray(DATA_ARRAY_SIZE, JCSystem.CLEAR_ON_DESELECT);
@@ -517,12 +517,13 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     // Move the SECRET after the VERSION
     // After the move the data[SECRET] becomes data[KEY_BLOB] and data[KEY_BLOB_VERSION_DATA_OFFSET]
     // will be followed by KEY_BLOB.
+    short secretPtr =
+        repository.move(data[SECRET], (short) (KMByteBlob.cast(data[SECRET]).headerLength() +
+            KMByteBlob.cast(data[SECRET]).length()), scratchPad, (short) 0);
     data[KEY_BLOB] = data[SECRET];
     data[KEY_BLOB_VERSION_DATA_OFFSET] =
         (short) (data[KEY_BLOB] + KMArray.cast(data[KEY_BLOB]).headerLength());
-    data[SECRET] =
-        repository.move(data[SECRET], (short) (KMByteBlob.cast(data[SECRET]).headerLength() +
-            KMByteBlob.cast(data[SECRET]).length()), scratchPad, (short) 0);
+    data[SECRET] = secretPtr;
 
     // Move the nonce from the end to start
     data[NONCE] =
@@ -575,7 +576,7 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       CERT
      */
 
-    if (ASYM_KEY_BLOB_SIZE_V2_V3 == getKeyType(data[SB_PARAMETERS])) {
+    if (ASYM_KEY_TYPE == getKeyType(data[SB_PARAMETERS])) {
       // Move the PUB_KEY at the end heapIndex.
       data[KEY_BLOB] = data[PUB_KEY];
       data[PUB_KEY] =
@@ -590,7 +591,6 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       AUTH_TAG
       CUSTOM_TAGS
       KEY_CHARS
-      CUSTOM_TAGS
       PUB_KEY       --> HEAP_IDX
       ..
       ..
@@ -600,9 +600,20 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     }
 
     // Move keyBlob at the end
-    short totalLen = (short) (KMArray.cast(data[KEY_BLOB]).headerLength()
+    totalLength = (short) (KMArray.cast(data[KEY_BLOB]).headerLength()
         + KMArray.cast(data[KEY_BLOB]).contentLength());
     data[KEY_BLOB] = repository.moveTowardsReclaimIndex(totalLength, scratchPad, (short) 0);
+
+    // Prepend ByteBlob
+    short headerLen = KMByteBlob.addHeader(totalLength, scratchPad, (short) 0);
+    short ptr = repository.allocReclaimableMemory(headerLen);
+    Util.arrayCopyNonAtomic(scratchPad, (short) 0, repository.getHeap(), ptr, headerLen);
+    data[KEY_BLOB] = ptr;
+
+
+    print(repository.getHeap(), data[KEY_BLOB], (short) (KMByteBlob.cast(data[KEY_BLOB]).headerLength() +
+        KMByteBlob.cast(data[KEY_BLOB]).length()));
+
     /*
       KEY_PARAMETERS   --> HEAP_IDX
       ..
@@ -664,11 +675,14 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
       index += recvLen;
       recvLen = apdu.receiveBytes(srcOffset);
     }
-    short ret = decoder.decode(reqExp, buffer, bufferStartOffset, bufferLength);
-    // exp memory no more required. move the input buffer at 0 offset on the heap.
-    Util.arrayCopyNonAtomic(buffer, bufferStartOffset, buffer, reqExp, bufferLength);
-    repository.setHeapIndex(bufferLength);
-    return reqExp;
+    if (reqExp != KMType.INVALID_VALUE) {
+      short ret = decoder.decode(reqExp, buffer, bufferStartOffset, bufferLength);
+      // exp memory no more required. move the input buffer at 0 offset on the heap.
+      Util.arrayCopyNonAtomic(buffer, bufferStartOffset, buffer, reqExp, bufferLength);
+      repository.setHeapIndex(bufferLength);
+      return reqExp;
+    }
+    return bufferStartOffset;
   }
 
   private short generateKeyCmd(APDU apdu) {
@@ -680,6 +694,37 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     KMByteBlob.exp(); // issuer
     return receiveIncoming(apdu, cmd);
   }
+
+  private short generateKeyCmd1(APDU apdu) {
+    short expsArray = repository.alloc((short) 8);
+    short keyParmsExp = KMKeyParameters.expAny();
+    short byteBlobExp = KMByteBlob.exp();
+    Util.setShort(repository.getHeap(), expsArray, keyParmsExp);
+    Util.setShort(repository.getHeap(), (short) (expsArray + 2), byteBlobExp);
+    Util.setShort(repository.getHeap(), (short) (expsArray + 4), keyParmsExp);
+    Util.setShort(repository.getHeap(), (short) (expsArray + 6), byteBlobExp);
+    byte[] buffer = repository.getHeap();
+    // Input parameter validation.
+    short bufferStartOffset = receiveIncoming(apdu, KMType.INVALID_VALUE);
+    if (KMArray.cast(bufferStartOffset).length() != 4) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+    for (short index = 0; index < (short) 8; index += 2) {
+      short ptr = KMArray.cast(bufferStartOffset).get((short) (index/2));
+      short exp = Util.getShort(buffer, (short) (expsArray + index));
+      short length = KMKeyParameters.getTotalLength(ptr); // TODO : Move this to KMType
+      decoder.decode(exp, buffer, ptr, length);
+    }
+    short bufferLength = apdu.getIncomingLength();
+    // exp memory no more required. move the input buffer at 0 offset on the heap.
+    Util.arrayCopyNonAtomic(buffer, bufferStartOffset, buffer, (short) 0, bufferLength);
+    repository.setHeapIndex(bufferLength);
+    return (short) 0;
+  }
+
+  byte[] cert = new byte[] {
+      (byte)0x30, (byte)0x82, (byte)0x02, (byte)0xbd, (byte)0x30, (byte)0x82, (byte)0x01, (byte)0xa5, (byte)0xa0, (byte)0x03, (byte)0x02, (byte)0x01, (byte)0x02, (byte)0x02, (byte)0x01, (byte)0x01, (byte)0x30, (byte)0x0d, (byte)0x06, (byte)0x09, (byte)0x2a, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xf7, (byte)0x0d, (byte)0x01, (byte)0x01, (byte)0x0b, (byte)0x05, (byte)0x00, (byte)0x30, (byte)0x1f, (byte)0x31, (byte)0x1d, (byte)0x30, (byte)0x1b, (byte)0x06, (byte)0x03, (byte)0x55, (byte)0x04, (byte)0x03, (byte)0x0c, (byte)0x14, (byte)0x41, (byte)0x6e, (byte)0x64, (byte)0x72, (byte)0x6f, (byte)0x69, (byte)0x64, (byte)0x20, (byte)0x4b, (byte)0x65, (byte)0x79, (byte)0x73, (byte)0x74, (byte)0x6f, (byte)0x72, (byte)0x65, (byte)0x20, (byte)0x4b, (byte)0x65, (byte)0x79, (byte)0x30, (byte)0x20, (byte)0x17, (byte)0x0d, (byte)0x37, (byte)0x30, (byte)0x30, (byte)0x31, (byte)0x30, (byte)0x31, (byte)0x30, (byte)0x30, (byte)0x30, (byte)0x30, (byte)0x30, (byte)0x30, (byte)0x5a, (byte)0x18, (byte)0x0f, (byte)0x39, (byte)0x39, (byte)0x39, (byte)0x39, (byte)0x31, (byte)0x32, (byte)0x33, (byte)0x31, (byte)0x32, (byte)0x33, (byte)0x35, (byte)0x39, (byte)0x35, (byte)0x39, (byte)0x5a, (byte)0x30, (byte)0x1f, (byte)0x31, (byte)0x1d, (byte)0x30, (byte)0x1b, (byte)0x06, (byte)0x03, (byte)0x55, (byte)0x04, (byte)0x03, (byte)0x0c, (byte)0x14, (byte)0x41, (byte)0x6e, (byte)0x64, (byte)0x72, (byte)0x6f, (byte)0x69, (byte)0x64, (byte)0x20, (byte)0x4b, (byte)0x65, (byte)0x79, (byte)0x73, (byte)0x74, (byte)0x6f, (byte)0x72, (byte)0x65, (byte)0x20, (byte)0x4b, (byte)0x65, (byte)0x79, (byte)0x30, (byte)0x82, (byte)0x01, (byte)0x22, (byte)0x30, (byte)0x0d, (byte)0x06, (byte)0x09, (byte)0x2a, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xf7, (byte)0x0d, (byte)0x01, (byte)0x01, (byte)0x01, (byte)0x05, (byte)0x00, (byte)0x03, (byte)0x82, (byte)0x01, (byte)0x0f, (byte)0x00, (byte)0x30, (byte)0x82, (byte)0x01, (byte)0x0a, (byte)0x02, (byte)0x82, (byte)0x01, (byte)0x01, (byte)0x00, (byte)0xcb, (byte)0x8a, (byte)0x03, (byte)0xc9, (byte)0x6d, (byte)0xab, (byte)0x32, (byte)0x57, (byte)0x65, (byte)0xc5, (byte)0xfa, (byte)0x0a, (byte)0x7d, (byte)0xb6, (byte)0x08, (byte)0x12, (byte)0x33, (byte)0x44, (byte)0x1b, (byte)0xaf, (byte)0xcd, (byte)0xff, (byte)0x9a, (byte)0xbe, (byte)0x76, (byte)0x29, (byte)0x24, (byte)0xa8, (byte)0xe2, (byte)0x25, (byte)0xc0, (byte)0x92, (byte)0x61, (byte)0x56, (byte)0xa1, (byte)0xd4, (byte)0xf4, (byte)0xf8, (byte)0xfc, (byte)0x73, (byte)0xf8, (byte)0x66, (byte)0x9a, (byte)0x9d, (byte)0x84, (byte)0x5d, (byte)0xda, (byte)0xfd, (byte)0xcb, (byte)0x22, (byte)0x44, (byte)0xf9, (byte)0x9d, (byte)0x5b, (byte)0xfc, (byte)0x8d, (byte)0x23, (byte)0xa3, (byte)0x30, (byte)0xda, (byte)0x06, (byte)0xcf, (byte)0xe5, (byte)0x5e, (byte)0x82, (byte)0x5f, (byte)0x02, (byte)0xc2, (byte)0xe4, (byte)0x59, (byte)0xf2, (byte)0xf8, (byte)0x7a, (byte)0x1e, (byte)0xc3, (byte)0x29, (byte)0x17, (byte)0x5c, (byte)0x1b, (byte)0x0b, (byte)0xed, (byte)0xaf, (byte)0x64, (byte)0x6c, (byte)0x03, (byte)0x4d, (byte)0x0c, (byte)0xd1, (byte)0xbd, (byte)0xce, (byte)0x14, (byte)0x57, (byte)0xb1, (byte)0xce, (byte)0xc6, (byte)0x67, (byte)0x24, (byte)0x52, (byte)0x46, (byte)0xcb, (byte)0xf5, (byte)0x78, (byte)0xc7, (byte)0x88, (byte)0xef, (byte)0x95, (byte)0x72, (byte)0x4a, (byte)0xd6, (byte)0x95, (byte)0x7e, (byte)0x5e, (byte)0xee, (byte)0xa2, (byte)0xff, (byte)0x86, (byte)0xde, (byte)0x03, (byte)0x63, (byte)0x3b, (byte)0x1d, (byte)0x69, (byte)0x35, (byte)0xda, (byte)0x63, (byte)0x8b, (byte)0x95, (byte)0x24, (byte)0xc4, (byte)0xa6, (byte)0x57, (byte)0xaf, (byte)0x7e, (byte)0x49, (byte)0xef, (byte)0x6d, (byte)0xac, (byte)0x84, (byte)0x91, (byte)0x9d, (byte)0x17, (byte)0x8d, (byte)0x37, (byte)0x4c, (byte)0x72, (byte)0xf9, (byte)0xc1, (byte)0x0e, (byte)0x62, (byte)0xad, (byte)0x41, (byte)0xa2, (byte)0x9f, (byte)0x96, (byte)0x9d, (byte)0x84, (byte)0x78, (byte)0x7a, (byte)0x1a, (byte)0x66, (byte)0x1f, (byte)0x68, (byte)0x58, (byte)0xf4, (byte)0xb1, (byte)0xe3, (byte)0xb0, (byte)0x9b, (byte)0xde, (byte)0x55, (byte)0xba, (byte)0xa2, (byte)0xb4, (byte)0x48, (byte)0xaf, (byte)0x39, (byte)0x4a, (byte)0xaa, (byte)0xcb, (byte)0xf6, (byte)0xbe, (byte)0xd9, (byte)0x8a, (byte)0x90, (byte)0xae, (byte)0x7a, (byte)0xb4, (byte)0xff, (byte)0x81, (byte)0xce, (byte)0xbe, (byte)0x33, (byte)0x19, (byte)0xd5, (byte)0xc8, (byte)0xc4, (byte)0xb2, (byte)0x42, (byte)0xd0, (byte)0x37, (byte)0xc3, (byte)0x2b, (byte)0xf4, (byte)0xe2, (byte)0x3b, (byte)0x84, (byte)0x8b, (byte)0xe0, (byte)0xc3, (byte)0x0d, (byte)0xa6, (byte)0x77, (byte)0xe4, (byte)0x3c, (byte)0x84, (byte)0xb6, (byte)0x14, (byte)0x40, (byte)0x66, (byte)0xd8, (byte)0xc8, (byte)0x5a, (byte)0x8e, (byte)0xa7, (byte)0xe7, (byte)0xc3, (byte)0x8b, (byte)0x56, (byte)0x95, (byte)0x01, (byte)0x30, (byte)0xed, (byte)0x92, (byte)0x90, (byte)0xae, (byte)0x71, (byte)0x8b, (byte)0x47, (byte)0x7a, (byte)0x0c, (byte)0x69, (byte)0x1a, (byte)0x5c, (byte)0xf0, (byte)0x87, (byte)0xb9, (byte)0x8e, (byte)0xbe, (byte)0xfa, (byte)0xe0, (byte)0xb5, (byte)0x1d, (byte)0x6a, (byte)0xc9, (byte)0x80, (byte)0x35, (byte)0x02, (byte)0x03, (byte)0x01, (byte)0x00, (byte)0x01, (byte)0xa3, (byte)0x02, (byte)0x30, (byte)0x00, (byte)0x30, (byte)0x0d, (byte)0x06, (byte)0x09, (byte)0x2a, (byte)0x86, (byte)0x48, (byte)0x86, (byte)0xf7, (byte)0x0d, (byte)0x01, (byte)0x01, (byte)0x0b, (byte)0x05, (byte)0x00, (byte)0x03, (byte)0x82, (byte)0x01, (byte)0x01, (byte)0x00, (byte)0x45, (byte)0x48, (byte)0x73, (byte)0xd1, (byte)0x93, (byte)0x1f, (byte)0x9f, (byte)0xf9, (byte)0x21, (byte)0x15, (byte)0xdf, (byte)0xcc, (byte)0x2e, (byte)0x5c, (byte)0x7b, (byte)0x3c, (byte)0x0e, (byte)0xd6, (byte)0xc5, (byte)0xb1, (byte)0x4b, (byte)0x46, (byte)0x79, (byte)0xf5, (byte)0xad, (byte)0x0c, (byte)0x76, (byte)0x64, (byte)0x4e, (byte)0x25, (byte)0xd1, (byte)0xcb, (byte)0x90, (byte)0x03, (byte)0xea, (byte)0xe9, (byte)0x9e, (byte)0x94, (byte)0x34, (byte)0x0f, (byte)0x17, (byte)0x3a, (byte)0x00, (byte)0x20, (byte)0x7a, (byte)0x73, (byte)0xe4, (byte)0xd2, (byte)0x81, (byte)0xd6, (byte)0x86, (byte)0x98, (byte)0xa7, (byte)0x22, (byte)0xff, (byte)0x2a, (byte)0x43, (byte)0x47, (byte)0xb7, (byte)0x24, (byte)0xe2, (byte)0x4a, (byte)0x59, (byte)0x77, (byte)0xa2, (byte)0x79, (byte)0xe0, (byte)0x30, (byte)0x83, (byte)0x05, (byte)0x49, (byte)0x3e, (byte)0x71, (byte)0xdc, (byte)0x89, (byte)0xf3, (byte)0x4b, (byte)0x3f, (byte)0xee, (byte)0x0d, (byte)0xb0, (byte)0xb5, (byte)0xbd, (byte)0xdc, (byte)0x8b, (byte)0x2d, (byte)0xb2, (byte)0xa2, (byte)0x52, (byte)0x8c, (byte)0xf6, (byte)0xad, (byte)0xd9, (byte)0xb7, (byte)0x8a, (byte)0x7f, (byte)0x0c, (byte)0x32, (byte)0x07, (byte)0xe5, (byte)0x9b, (byte)0x21, (byte)0xdf, (byte)0x66, (byte)0xcb, (byte)0xdb, (byte)0x1f, (byte)0x99, (byte)0x48, (byte)0x03, (byte)0x57, (byte)0x06, (byte)0x47, (byte)0xa6, (byte)0xe0, (byte)0x0f, (byte)0xd7, (byte)0xb3, (byte)0x95, (byte)0x61, (byte)0xf5, (byte)0x1a, (byte)0x2e, (byte)0xdf, (byte)0xd1, (byte)0xb1, (byte)0x33, (byte)0xcc, (byte)0x3f, (byte)0x39, (byte)0xe0, (byte)0x81, (byte)0xd8, (byte)0x1c, (byte)0x17, (byte)0x29, (byte)0xe4, (byte)0x32, (byte)0xd1, (byte)0xc4, (byte)0x7b, (byte)0x17, (byte)0x7d, (byte)0x6b, (byte)0xc6, (byte)0x23, (byte)0xa8, (byte)0x28, (byte)0x75, (byte)0x68, (byte)0x3c, (byte)0x93, (byte)0x95, (byte)0xbb, (byte)0x81, (byte)0x9a, (byte)0xf0, (byte)0xd6, (byte)0xcc, (byte)0xa5, (byte)0xb8, (byte)0x50, (byte)0x9d, (byte)0xf5, (byte)0xff, (byte)0x39, (byte)0xe4, (byte)0x44, (byte)0xa2, (byte)0xda, (byte)0xbc, (byte)0x2d, (byte)0xba, (byte)0x76, (byte)0x64, (byte)0x8b, (byte)0xb5, (byte)0x96, (byte)0x74, (byte)0x5c, (byte)0xd8, (byte)0x20, (byte)0x96, (byte)0x05, (byte)0x37, (byte)0xd4, (byte)0x5e, (byte)0xe3, (byte)0x3d, (byte)0xc4, (byte)0x1c, (byte)0xa4, (byte)0x30, (byte)0xc3, (byte)0x67, (byte)0x38, (byte)0x60, (byte)0xb9, (byte)0x73, (byte)0x34, (byte)0x88, (byte)0xd9, (byte)0x60, (byte)0x2f, (byte)0x02, (byte)0xb5, (byte)0x60, (byte)0xe7, (byte)0x80, (byte)0x46, (byte)0x31, (byte)0xe7, (byte)0x2e, (byte)0xa9, (byte)0x52, (byte)0x51, (byte)0x28, (byte)0xf4, (byte)0xcd, (byte)0x98, (byte)0xb5, (byte)0x86, (byte)0x74, (byte)0xba, (byte)0xd0, (byte)0x3c, (byte)0xe2, (byte)0x96, (byte)0x2c, (byte)0x99, (byte)0x9a, (byte)0x8d, (byte)0x65, (byte)0x5b, (byte)0x42, (byte)0x1c, (byte)0xb1, (byte)0x44, (byte)0x93, (byte)0xb9, (byte)0xb1, (byte)0xc5, (byte)0xae, (byte)0x79, (byte)0xce, (byte)0x64, (byte)0xeb, (byte)0x44, (byte)0x37, (byte)0xd8, (byte)0x80, (byte)0xd3, (byte)0x14, (byte)0x5e, (byte)0x42, (byte)0xec
+  };
 
   private void processGenerateKey(APDU apdu) {
     // Receive the incoming request fully from the host into buffer.
@@ -757,8 +802,14 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     data[ORIGIN] = KMType.GENERATED;
     makeKeyCharacteristics(scratchPad);
     // TODO This is a temporary code to create dummy certificate.
-    short ptr = repository.allocReclaimableMemory((short) 1500);
-    Util.arrayFillNonAtomic(repository.getHeap(), ptr, (short) 1500, (byte)0x01);
+    short ptr = KMByteBlob.instance((short) cert.length);
+    //short ptr = repository.allocReclaimableMemory((short) 1500);
+    Util.arrayCopyNonAtomic(cert, (short) 0,
+        KMByteBlob.cast(ptr).getBuffer(),
+        KMByteBlob.cast(ptr).getStartOff(),
+        (short) cert.length);
+    repository.moveTowardsReclaimIndex((short) (KMByteBlob.cast(ptr).headerLength()+
+        KMByteBlob.cast(ptr).length()), scratchPad, (short) 0);
     // construct the certificate and place the encoded data in data[CERTIFICATE]
     // KMAttestationCert cert =
     //     generateAttestation(data[ATTEST_KEY_BLOB], data[ATTEST_KEY_PARAMS], scratchPad);
@@ -772,11 +823,10 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     data[SW_PARAMETERS] = KMArray.cast(data[KEY_CHARACTERISTICS]).get((short) 2);
 
     createEncryptedKeyBlob(scratchPad);
-    sendOutgoing(apdu, data[CERTIFICATE], data[KEY_BLOB], data[KEY_CHARACTERISTICS]);
+    sendOutgoing(apdu);
   }
 
-  public void sendOutgoing(
-      APDU apdu, /*KMAttestationCert cert,*/ short certStart, short keyblob, short keyChars) {
+  public void sendOutgoing(APDU apdu) {
     // This is the special case where the output is encoded manually without using
     // the encoder algorithm. Encoder creates a duplicate copy for each KMType Object.
     // The output of the generateKey, importKey and importWrappedKey commands are huge so
@@ -794,12 +844,18 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
     // keyChars = {  // Map
     // }
     // Enable this when doing heap profiling.
+    byte[] buffer = repository.getHeap();
+    // Write Array header and ErrorCode before data[KEY_BLOB]
+    short bufferStartOffset = repository.allocReclaimableMemory((short) 2);
+    Util.setShort(buffer, bufferStartOffset, (short) 0x8400);
+    short bufferLength = (short) (KMRepository.HEAP_SIZE - repository.getHeapReclaimIndex());
 
-    // TODO
+    System.out.println(" maxHeapSize:" +KMRepository.maxHeapSize);
+
     // Send data
-    // apdu.setOutgoing();
-    // apdu.setOutgoingLength(bufferLength);
-    // apdu.sendBytesLong(buffer, bufferStartOffset, bufferLength);
+    apdu.setOutgoing();
+    apdu.setOutgoingLength(bufferLength);
+    apdu.sendBytesLong(buffer, bufferStartOffset, bufferLength);
   }
 
   private static void validateRSAKey(byte[] scratchPad) {
@@ -849,5 +905,13 @@ public class KMKeymasterApplet extends Applet implements ExtendedLength {
         KMException.throwIt(KMError.UNSUPPORTED_ALGORITHM);
     }
     return KMArray.instance(arrayLen);
+  }
+
+  private static void print(byte[] buf, short start, short length) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = start; i < (start + length); i++) {
+      sb.append(String.format(" 0x%02X", buf[i]));
+    }
+    System.out.println(sb.toString());
   }
 }

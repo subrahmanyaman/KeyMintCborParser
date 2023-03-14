@@ -374,6 +374,10 @@ public class KMMap extends KMType {
     // return 0;
   }
 
+  public short totalLength() {
+    return (short) (headerLength() + contentLength());
+  }
+
   public short headerLength() {
     return headerLength(KMType.instanceTable[KM_MAP_OFFSET]);
     // byte addInfo = (byte) (heap[KMType.instanceTable[KM_MAP_OFFSET]] & 0x1F);

@@ -13,21 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.cborparser;
+package com.android.javacard.seprovider;
 
-import javacard.security.HMACKey;
+import org.globalplatform.upgrade.Element;
 
-/** This is a wrapper class for HMACKey. */
-public class KMHmacKey implements KMKey {
+public interface KMUpgradable {
 
-  public HMACKey hmacKey;
+  void onSave(Element ele);
 
-  public KMHmacKey(HMACKey key) {
-    hmacKey = key;
-  }
+  void onRestore(Element element, short oldVersion, short currentVersion);
 
-  @Override
-  public short getPublicKey(byte[] buf, short offset) {
-    return 0;
-  }
+  short getBackupPrimitiveByteCount();
+
+  short getBackupObjectCount();
 }
