@@ -189,6 +189,11 @@ public class KMDecoder {
     short startOff = scratchBuf[START_OFFSET];
     short payloadLength = KMArray.cast(startOff).length();
     incrementStartOff(KMArray.cast(startOff).headerLength());
+// TODO Do proper fix here
+    if (KMArray.cast(exp).length() == 0) {
+      incrementStartOff(KMArray.cast(startOff).contentLength());
+      return startOff;
+    }
     short index = 0;
     short type;
     short obj;

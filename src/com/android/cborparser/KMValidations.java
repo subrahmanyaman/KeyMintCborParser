@@ -210,6 +210,7 @@ public class KMValidations {
       case KMType.VENDOR_PATCH_LEVEL:
       case KMType.BOOT_PATCH_LEVEL:
       case KMType.MAC_LENGTH:
+      case KMType.USAGE_COUNT_LIMIT:
         return true;
       default:
         return false;
@@ -229,7 +230,7 @@ public class KMValidations {
 
   public static boolean validateULongArrayTag(short keyPtr, short valuePtr) {
     short key = KMInteger.cast(keyPtr).getShort();
-    byte value = KMInteger.cast(valuePtr).getByte();
+    //byte value = KMInteger.cast(valuePtr).getByte();
     switch (key) {
       case KMType.USER_SECURE_ID:
         return true;
@@ -287,7 +288,6 @@ public class KMValidations {
       case KMType.CREATION_DATETIME:
       case KMType.CERTIFICATE_NOT_BEFORE:
       case KMType.CERTIFICATE_NOT_AFTER:
-      case KMType.USAGE_COUNT_LIMIT:
         // custom tag
       case KMType.AUTH_TIMEOUT_MILLIS:
         return true;

@@ -392,7 +392,8 @@ public class KMKeyParameters {
       Util.setShort(scratchPad, index, appDataBlob);
       index += 2;
     }
-    copyKeyParamters(scratchPad, (short) (index / 2));
+    // TODO Optmize this duplicate copyHiddenParamters
+    copyHiddenKeyParamters(scratchPad, (short) (index / 2));
     return map;
   }
 
@@ -450,6 +451,30 @@ public class KMKeyParameters {
       destPtr = KMRepository.instance().alloc(contentLength);
       Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
       index++;
+      ptr += 2;
+    }
+  }
+
+  public static void copyHiddenKeyParamters(byte[] ptrArr, short len) {
+    // KeyParameters length won't be greater than 255.
+    if (len > 255) {
+      ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+    }
+    byte[] heap = KMRepository.instance().getHeap();
+    short destPtr;
+    short index = 0;
+    short ptr = 0;
+    short contentLength;
+    while (index < len) {
+      // TODO Avoid copies.
+      contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
+      destPtr = KMRepository.instance().alloc(contentLength);
+      Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
+      ptr += 2;
+      contentLength = getTotalLength(Util.getShort(ptrArr, ptr));
+      destPtr = KMRepository.instance().alloc(contentLength);
+      Util.arrayCopyNonAtomic(heap, Util.getShort(ptrArr, ptr), heap, destPtr, contentLength);
+      index +=2;
       ptr += 2;
     }
   }
