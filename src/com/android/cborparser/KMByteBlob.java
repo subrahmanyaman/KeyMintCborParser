@@ -71,10 +71,12 @@ public class KMByteBlob extends KMType {
   }
 
   public static short byteBlobHeaderLength(short length) {
-    short byteBlobHeaderLen = 1;
-    if (length >= 24 && length <= 255) {
+    short byteBlobHeaderLen = 0;
+    if (length <= 23) {
+      byteBlobHeaderLen = 1;
+    } else if (length >= 24 && length <= 255) {
       byteBlobHeaderLen = 2;
-    } else if (length <= 65535 ) {
+    } else if (length > 255 && length <= 65535 ) {
       byteBlobHeaderLen = 3;
     } else {
       KMException.throwIt(KMError.INVALID_INPUT_LENGTH);
